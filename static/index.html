@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Speech to Text - Sinhala & English</title>
+    <style>
+        :root {
+            --primary-color: #1f77b4;
+            --secondary-color: #2e86ab;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --light-bg: #f8f9fa;
+            --dark-bg: #343a40;
+            --border-radius: 10px;
+            --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .language-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .lang-btn {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid var(--primary-color);
+            background: white;
+            color: var(--primary-color);
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .lang-btn.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .record-btn {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .record-btn.start {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .record-btn.stop {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .record-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border-radius: var(--border-radius);
+            background: var(--light-bg);
+        }
+
+        .recording-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--danger-color);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .transcript-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: var(--border-radius);
+            padding: 15px;
+            background: var(--light-bg);
+        }
+
+        .transcript-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: var(--border-radius);
+            background: white;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .transcript-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .language-tag {
+            background: var(--primary-color);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+
+        .timestamp {
+            color: #6c757d;
+            font-size: 0.8rem;
+        }
+
+        .transcript-text {
+            font-size: 1.1rem;
+            line-height: 1.4;
+        }
+
+        .live-transcript {
+            background: #e8f5e8;
+            border: 2px solid #28a745;
+            border-radius: var(--border-radius);
+            padding: 15px;
+            margin: 10px 0;
+            min-height: 60px;
+            font-size: 1.2rem;
+            line-height: 1.6;
+        }
+
+        .word {
+            display: inline-block;
+            margin: 2px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: #d4edda;
+            animation: wordAppear 0.3s ease-in;
+        }
+
+        @keyframes wordAppear {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .stats {
+            background: var(--dark-bg);
+            color: white;
+        }
+
+        .stats h3 {
+            margin-bottom: 15px;
+            color: var(--warning-color);
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .instructions {
+            background: var(--light-bg);
+        }
+
+        .instructions ol {
+            padding-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+        }
+
+        .clear-btn {
+            background: var(--warning-color);
+            color: var(--dark-bg);
+            border: none;
+            padding: 10px;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .debug-info {
+            background: #f8f9fa;
+            border-radius: var(--border-radius);
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+
+        .test-audio {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: var(--border-radius);
+            padding: 10px;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎤 Live Speech to Text</h1>
+            <p>Real-time Sinhala & English Speech Recognition</p>
+        </div>
+
+        <div class="main-content">
+            <div class="main-panel">
+                <div class="card controls">
+                    <h2>🎙️ Recording Controls</h2>
+                    <div class="language-selector">
+                        <button class="lang-btn active" data-lang="si-LK">Sinhala (සිංහල)</button>
+                        <button class="lang-btn" data-lang="en-US">English</button>
+                    </div>
+                    
+                    <button id="recordBtn" class="record-btn start">
+                        🎤 Start Recording
+                    </button>
+                    
+                    <div class="status-indicator">
+                        <div id="statusDot" class="recording-dot" style="display: none;"></div>
+                        <span id="statusText">Ready to record</span>
+                    </div>
+
+                    <div class="live-transcript" id="liveTranscript">
+                        <em>Speak now - words will appear here sequentially...</em>
+                    </div>
+
+                    <div class="test-audio">
+                        <strong>Testing Tips:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>Speak clearly and at normal pace</li>
+                            <li>Use a good quality microphone</li>
+                            <li>Record in a quiet environment</li>
+                            <li>Try simple phrases first</li>
+                        </ul>
+                    </div>
+
+                    <button id="clearBtn" class="clear-btn">
+                        🗑️ Clear All
+                    </button>
+
+                    <div class="debug-info">
+                        <div>Connection: <span id="connectionStatus">❌ Disconnected</span></div>
+                        <div>Audio Chunks: <span id="audioChunkCount">0</span></div>
+                        <div>Status: <span id="lastMessage">Waiting...</span></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>📝 Complete Transcripts</h2>
+                    <div id="transcriptContainer" class="transcript-container">
+                        <div class="transcript-item">
+                            <div class="transcript-text">
+                                Complete sentences will appear here...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="card stats">
+                    <h3>📊 Statistics</h3>
+                    <div class="stat-item">
+                        <span>Total Transcripts:</span>
+                        <span id="totalTranscripts">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Current Language:</span>
+                        <span id="currentLanguage">Sinhala</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Sample Rate:</span>
+                        <span>16 kHz</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Mode:</span>
+                        <span>Sequential</span>
+                    </div>
+                </div>
+
+                <div class="card instructions">
+                    <h3>📋 Instructions</h3>
+                    <ol>
+                        <li>Select your preferred language</li>
+                        <li>Click "Start Recording"</li>
+                        <li>Speak clearly into your microphone</li>
+                        <li>Watch words appear sequentially above</li>
+                        <li>Complete sentences appear below</li>
+                        <li>Click "Stop Recording" when done</li>
+                        <li><strong>For Sinhala:</strong> Try phrases like "හෙලෝ", "කොහොමද", "ඔබට මට උදව් කළ හැකිද"</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class SpeechRecorder {
+            constructor() {
+                this.isRecording = false;
+                this.mediaRecorder = null;
+                this.audioChunks = [];
+                this.stream = null;
+                this.websocket = null;
+                this.currentLanguage = 'si-LK';
+                this.audioChunkCount = 0;
+                this.currentSentence = '';
+                this.liveTranscriptElement = document.getElementById('liveTranscript');
+            }
+
+            async init() {
+                try {
+                    await this.connectWebSocket();
+                    await this.setupAudioRecording();
+                    this.setupEventListeners();
+                    this.updateStatus('Ready to record');
+                    this.updateLastMessage('System initialized');
+                } catch (error) {
+                    console.error('Initialization error:', error);
+                    this.updateStatus('Error: ' + error.message, true);
+                }
+            }
+
+            async connectWebSocket() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws`;
+                
+                this.websocket = new WebSocket(wsUrl);
+                
+                this.websocket.onopen = () => {
+                    console.log('WebSocket connected');
+                    this.updateConnectionStatus('✅ Connected');
+                    this.updateStatus('Connected - Ready to record');
+                    this.updateLastMessage('Connected to server');
+                };
+                
+                this.websocket.onmessage = (event) => {
+                    console.log('WebSocket message received:', event.data);
+                    const data = JSON.parse(event.data);
+                    this.handleWebSocketMessage(data);
+                };
+                
+                this.websocket.onclose = () => {
+                    console.log('WebSocket disconnected');
+                    this.updateConnectionStatus('❌ Disconnected');
+                    this.updateStatus('Disconnected - Attempting to reconnect...');
+                    setTimeout(() => this.connectWebSocket(), 3000);
+                };
+                
+                this.websocket.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    this.updateConnectionStatus('❌ Connection Error');
+                    this.updateStatus('Connection error', true);
+                };
+            }
+
+            async setupAudioRecording() {
+                try {
+                    this.stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            sampleRate: 16000,
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        } 
+                    });
+                    console.log('Microphone access granted');
+                    this.updateLastMessage('Microphone ready - Speak clearly');
+                } catch (error) {
+                    console.error('Error accessing microphone:', error);
+                    this.updateStatus('Microphone access denied. Please check permissions.', true);
+                    throw new Error('Microphone access denied');
+                }
+            }
+
+            setupEventListeners() {
+                document.getElementById('recordBtn').addEventListener('click', () => {
+                    this.toggleRecording();
+                });
+
+                document.querySelectorAll('.lang-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+                        e.target.classList.add('active');
+                        this.currentLanguage = e.target.dataset.lang;
+                        document.getElementById('currentLanguage').textContent = 
+                            this.currentLanguage === 'si-LK' ? 'Sinhala' : 'English';
+                        this.updateStatus(`Language changed to ${this.currentLanguage}`);
+                        this.updateLastMessage(`Language set to ${this.currentLanguage}`);
+                    });
+                });
+
+                document.getElementById('clearBtn').addEventListener('click', () => {
+                    this.clearAll();
+                });
+            }
+
+            toggleRecording() {
+                if (this.isRecording) {
+                    this.stopRecording();
+                } else {
+                    this.startRecording();
+                }
+            }
+
+            startRecording() {
+                if (!this.stream) {
+                    alert('Microphone not available. Please check permissions.');
+                    return;
+                }
+
+                if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+                    alert('WebSocket not connected. Please wait...');
+                    return;
+                }
+
+                this.audioChunks = [];
+                this.audioChunkCount = 0;
+                this.updateAudioChunkCount();
+                this.clearLiveTranscript();
+                this.updateLastMessage('Starting recording...');
+
+                // Try different audio formats for better compatibility
+                const formats = [
+                    'audio/webm;codecs=opus',
+                    'audio/webm',
+                    'audio/mp4',
+                    ''
+                ];
+
+                let mediaRecorder = null;
+                for (const format of formats) {
+                    try {
+                        if (format && MediaRecorder.isTypeSupported(format)) {
+                            mediaRecorder = new MediaRecorder(this.stream, {
+                                mimeType: format,
+                                audioBitsPerSecond: 128000
+                            });
+                            console.log(`Using format: ${format}`);
+                            break;
+                        }
+                    } catch (e) {
+                        console.warn(`Format ${format} not supported:`, e);
+                    }
+                }
+
+                if (!mediaRecorder) {
+                    mediaRecorder = new MediaRecorder(this.stream);
+                    console.log('Using default format');
+                }
+
+                this.mediaRecorder = mediaRecorder;
+
+                this.mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        this.audioChunks.push(event.data);
+                        this.audioChunkCount++;
+                        this.updateAudioChunkCount();
+                        this.processAudioChunk(event.data);
+                    }
+                };
+
+                this.mediaRecorder.onstop = () => {
+                    console.log('Recording stopped');
+                    this.updateLastMessage('Recording stopped - processing...');
+                };
+
+                // Use 3-second chunks for better audio quality
+                this.mediaRecorder.start(3000);
+                this.isRecording = true;
+                this.updateUI(true);
+                this.updateStatus('Recording... Speak clearly now');
+                this.updateLastMessage('Recording - speak into microphone');
+                console.log('Recording started');
+            }
+
+            stopRecording() {
+                if (this.mediaRecorder && this.isRecording) {
+                    this.mediaRecorder.stop();
+                    this.isRecording = false;
+                    this.updateUI(false);
+                    this.updateStatus('Recording stopped');
+                    this.updateLastMessage('Finalizing processing...');
+                    console.log('Recording stopped');
+                }
+            }
+
+            async processAudioChunk(audioBlob) {
+                try {
+                    const arrayBuffer = await audioBlob.arrayBuffer();
+                    const base64Audio = this.arrayBufferToBase64(arrayBuffer);
+                    
+                    const message = {
+                        type: 'audio',
+                        data: `data:audio/webm;base64,${base64Audio}`,
+                        language: this.currentLanguage,
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    this.websocket.send(JSON.stringify(message));
+                    this.updateLastMessage(`Processing audio chunk ${this.audioChunkCount}`);
+                } catch (error) {
+                    console.error('Error processing audio chunk:', error);
+                    this.updateLastMessage('Error sending audio');
+                }
+            }
+
+            arrayBufferToBase64(buffer) {
+                let binary = '';
+                const bytes = new Uint8Array(buffer);
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                return window.btoa(binary);
+            }
+
+            handleWebSocketMessage(data) {
+                switch (data.type) {
+                    case 'transcript':
+                        this.displaySequentialTranscript(data.text, data.language, data.timestamp);
+                        break;
+                    case 'error':
+                        console.error('Server error:', data.message);
+                        this.updateStatus('Error: ' + data.message, true);
+                        this.updateLastMessage('Server error: ' + data.message);
+                        break;
+                    default:
+                        console.log('Unknown message type:', data.type);
+                }
+            }
+
+            displaySequentialTranscript(text, language, timestamp) {
+                if (!text || text === "No speech detected") {
+                    this.updateLastMessage('No speech detected - try speaking louder');
+                    return;
+                }
+
+                if (text.includes('Transcription error')) {
+                    this.updateStatus('Transcription error occurred', true);
+                    this.updateLastMessage('Transcription error');
+                    return;
+                }
+
+                // Display words sequentially
+                const words = text.split(' ');
+                this.displayWordsSequentially(words, language, timestamp);
+                
+                // Also display complete transcript
+                this.displayCompleteTranscript(text, language, timestamp);
+                
+                this.updateLastMessage('Transcription successful');
+            }
+
+            displayWordsSequentially(words, language, timestamp) {
+                // Clear previous content if it's the placeholder
+                if (this.liveTranscriptElement.innerHTML.includes('Speak now')) {
+                    this.liveTranscriptElement.innerHTML = '';
+                }
+
+                let index = 0;
+                const displayNextWord = () => {
+                    if (index < words.length) {
+                        const word = words[index];
+                        const wordElement = document.createElement('span');
+                        wordElement.className = 'word';
+                        wordElement.textContent = word + ' ';
+                        
+                        this.liveTranscriptElement.appendChild(wordElement);
+                        
+                        // Scroll to bottom
+                        this.liveTranscriptElement.scrollTop = this.liveTranscriptElement.scrollHeight;
+                        
+                        index++;
+                        setTimeout(displayNextWord, 200); // 200ms delay between words
+                    }
+                };
+
+                displayNextWord();
+            }
+
+            displayCompleteTranscript(text, language, timestamp) {
+                const container = document.getElementById('transcriptContainer');
+                const transcriptItem = document.createElement('div');
+                transcriptItem.className = 'transcript-item';
+                
+                const time = new Date(timestamp).toLocaleTimeString();
+                const langName = language === 'si-LK' ? 'SI' : 'EN';
+                
+                transcriptItem.innerHTML = `
+                    <div class="transcript-header">
+                        <span class="language-tag">${langName}</span>
+                        <span class="timestamp">${time}</span>
+                    </div>
+                    <div class="transcript-text">${text}</div>
+                `;
+                
+                const firstChild = container.firstChild;
+                if (firstChild && firstChild.textContent.includes('Complete sentences will appear here')) {
+                    container.removeChild(firstChild);
+                }
+                container.insertBefore(transcriptItem, container.firstChild);
+                
+                this.updateStatistics();
+            }
+
+            clearLiveTranscript() {
+                this.liveTranscriptElement.innerHTML = '<em>Speak now - words will appear here sequentially...</em>';
+            }
+
+            clearAll() {
+                this.clearLiveTranscript();
+                const container = document.getElementById('transcriptContainer');
+                container.innerHTML = '<div class="transcript-item"><div class="transcript-text">Complete sentences will appear here...</div></div>';
+                this.updateStatistics();
+                this.updateStatus('All cleared');
+                this.updateLastMessage('Ready for new recording');
+            }
+
+            updateStatistics() {
+                const transcripts = document.querySelectorAll('.transcript-item');
+                document.getElementById('totalTranscripts').textContent = transcripts.length;
+            }
+
+            updateUI(recording) {
+                const recordBtn = document.getElementById('recordBtn');
+                const statusDot = document.getElementById('statusDot');
+                const statusText = document.getElementById('statusText');
+
+                if (recording) {
+                    recordBtn.innerHTML = '⏹️ Stop Recording';
+                    recordBtn.className = 'record-btn stop';
+                    statusDot.style.display = 'block';
+                } else {
+                    recordBtn.innerHTML = '🎤 Start Recording';
+                    recordBtn.className = 'record-btn start';
+                    statusDot.style.display = 'none';
+                }
+            }
+
+            updateStatus(message, isError = false) {
+                const statusText = document.getElementById('statusText');
+                statusText.textContent = message;
+                statusText.style.color = isError ? 'var(--danger-color)' : 'inherit';
+            }
+
+            updateConnectionStatus(status) {
+                document.getElementById('connectionStatus').textContent = status;
+            }
+
+            updateAudioChunkCount() {
+                document.getElementById('audioChunkCount').textContent = this.audioChunkCount;
+            }
+
+            updateLastMessage(message) {
+                document.getElementById('lastMessage').textContent = message;
+            }
+        }
+
+        // Initialize the application when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            const recorder = new SpeechRecorder();
+            recorder.init();
+        });
+    </script>
+</body>
+</html>
