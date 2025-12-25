@@ -1,4 +1,4 @@
-from fastapi improt 
+from fastapi import Fastapi
 from transformers import AutoTokenizer,AutoModelForCausalLM
 import torch
 
@@ -32,6 +32,17 @@ Example:"Original  receipt එක අරන් යන්න ඔනේ. Printout 
 Your goal is to resolve customer issues efficiently while maintaining a friendly, professional demeanor that reflects ABC Telecommunications' commitment to excellent service.
 
 """
+
+inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+
+outputs = model.generate(
+    **inputs,
+    max_new_tokens=200,
+    do_sample=True,
+    top_p=0.9,
+    temperature=0.7,
+    eos_token_id=tokenizer.eos_token_id
+)
 
 
 
