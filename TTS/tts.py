@@ -51,4 +51,4 @@ class TTS:
     while pygame.mixer.music.get_busy():
         pygame.time.Clock().tick(10)
 
-    print("✅ Sinhala TTS played from memory (no file saved)")
+    print("Sinhala TTS played from memory (no file saved)")
