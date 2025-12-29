@@ -1,15 +1,12 @@
-from fastapi import Fastapi
+from fastapi import FastAPI, Form
+from fastapi.responses import HTMLResponse
 from transformers import AutoTokenizer,AutoModelForCausalLM
 import torch
+from workflow.first import models
 
+app =FastAPI()
 
-model_path = 'D:\Way to Denmark\Projects\Sinhala-call-center-assistant-for-Sri-Lanka-telecommunication-industry\model'
-
-tokenizer = AutoTokenizer.from_pretrained(model_path)
-
-model=AutoModelForCausalLM.from_pretrained(model_path,
-                                           torch_dtype=torch.float16,
-                                           device_map='auto')
+llm=models
 
 prompt ="""<s>### Instruction:
 You are a telecommunicational AI assistant specialized in handling customer inquiries for a Sri Lankan telecommunication industry.
@@ -31,18 +28,35 @@ Example:"Original  receipt එක අරන් යන්න ඔනේ. Printout 
 
 Your goal is to resolve customer issues efficiently while maintaining a friendly, professional demeanor that reflects ABC Telecommunications' commitment to excellent service.
 
+### Customer:
 """
 
-inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
-outputs = model.generate(
-    **inputs,
-    max_new_tokens=200,
-    do_sample=True,
-    top_p=0.9,
-    temperature=0.7,
-    eos_token_id=tokenizer.eos_token_id
+@app.post("/send_message", response_class=HTMLResponse)
+async def message(message:str = Form(...)):
+    full_prompt = prompt + message + "\n\n### Assistant:\n"
+    
+    inputs = llm.tokenizer(full_prompt, return_tensors="pt").to(llm.model.device)
+    outputs = llm.model.generate(
+        **inputs,
+        max_new_tokens=200,
+        do_sample=True,
+        top_p=0.9,
+        temperature=0.7,
+        eos_token_id=llm.tokenizer.eos_token_id
 )
+    
+    reply = llm.tokenizer.decode(outputs[0],skip_special_tokens=True)
+    
+    
+    if "### Assistant:" in reply:
+        reply =reply.split("### Assistant:")[-1].strip()
+        
+    return  f"""
+        <h2>Bot Reply</h2>
+        <p>{reply}</p>
+        <a href="/">Back</a>
+    """
 
 
 
