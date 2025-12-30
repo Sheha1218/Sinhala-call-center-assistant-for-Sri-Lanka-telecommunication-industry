@@ -1,6 +1,7 @@
 import torch
 from workflow.first import models
 
+app =FastAPI()
 
 class modeloutput:
     def __init__(self):

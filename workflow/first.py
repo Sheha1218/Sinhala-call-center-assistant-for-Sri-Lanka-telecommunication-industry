@@ -6,3 +6,6 @@ class models:
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
             self.model=AutoModelForCausalLM.from_pretrained(self.model_path)
             self.model.eval()
+            
+            
+
