@@ -6,6 +6,14 @@ class modeloutput:
     def __init__(self):
         self.llm = models()
 
+from workflow.first import models
+
+app =FastAPI()
+
+class modeloutput:
+    def __init__(self):
+        self.llm = models
+
         self.prompt = """<s>### Instruction:
 You are a telecommunicational AI assistant specialized in handling customer inquiries for a Sri Lankan telecommunication industry.
 You are fluent in Sinhala language and can understand and respond to customer.
@@ -51,4 +59,5 @@ Example:
         if "### Assistant:" in reply:
             reply = reply.split("### Assistant:")[-1].strip()
 
+        return reply
         return reply
