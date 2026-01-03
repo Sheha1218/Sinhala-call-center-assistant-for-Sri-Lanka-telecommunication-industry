@@ -1,4 +1,11 @@
 import torch
+from .first import models
+ 
+
+class modeloutput:
+    def __init__(self):
+        self.llm = models()
+
 from workflow.first import models
 
 app =FastAPI()
@@ -52,4 +59,5 @@ Example:
         if "### Assistant:" in reply:
             reply = reply.split("### Assistant:")[-1].strip()
 
+        return reply
         return reply

@@ -6,6 +6,22 @@ from RL_enviroment.lora_adapter import lora
 model_path = "./model"
 
 lora =lora
+class rl_agent:
+    def __init__(self):
+        config =PPOConfig(
+        learning_rate=5e-6,
+        batch_size=5,
+        mini_batch_size=1,
+    
+)
+
+        ppo_trainer =PPOTrainer(
+        config=config,
+        model=lora.model,
+        tokenizer=lora.tokenizer
+)
+
+        prompts =["""<s>### Instruction:
 
 config =PPOConfig(
     learning_rate=5e-6,
@@ -43,6 +59,27 @@ Your goal is to resolve customer issues efficiently while maintaining a friendly
 ### Customer:
 """]
 
+        response = [pd.read_csv('data.csv')]
+
+        rating =["x"]
+
+        rewards =[(r-10)/10 for r in rating ]
+
+        for prompt ,response,reward in zip(prompts, response,rewards):
+            q = lora.tokenizer(prompt,return_tensors='pt').to(lora.model.device)
+            r = lora.tokenizer(response,return_tensors='pt').to(lora.model.device)
+    
+    
+        ppo_trainer.step(
+            queries=[q['input']],
+         response =[r['input']],
+            rewards=[reward]
+        
+    )
+    
+
+        ppo_trainer.model.save_prereained()
+                
 response = [pd.read_csv('data.csv')]
 
 rating =["x"]
