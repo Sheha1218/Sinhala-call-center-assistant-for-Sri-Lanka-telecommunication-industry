@@ -16,11 +16,6 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
-from fastapi.templating import Jinja2Templates
-from audio.play import first,second,third
-import pygame
-
-app=FastAPI()
 static = Jinja2Templates(directory='static')
 
 s_first=first
@@ -62,7 +57,6 @@ def chat(req:chatrequest):
 
 
 
-        
 
 
 

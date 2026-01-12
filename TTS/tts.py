@@ -17,7 +17,7 @@ class TTS:
     client = texttospeech.TextToSpeechClient()
 
 
-    text = "Sim change කිරීමට original customer තමන්ගේ identification document—NIC, Driving License හෝ Passport—ගෙන branch එකට පැමිණිය යුතුය. මෙම සේවාව සඳහා Rs.100 ක් service charge එකක් අය වේ. Request එක process වීමෙන් පසු SIM activation සම්පූර්ණ වීමට සාමාන්‍යයෙන් පැය 3ක් පමණ කාලයක් ගත වන අතර, activation අවසන් වූ පසු ඔබට SIM card එක phone එකට insert කර භාවිතා කළ හැක."
+    text = "Sim change එකක් කරන්නෙ කෙසේද? එයට branch එකට පැමිණෙන විට, branch එකට පැමිණෙන customer තමන්ගේ valid NIC හෝ Driving License එකක් තිබිය යුතුය. Passport එකක් භාවිතා කරන විට, අලුත්ම මාස 3ක් ඇතුළත billing proof එකක් (Light bill, Water bill වැනි) ඉදිරිපත් කළ යුතුය. Reload කරන SIM එකක් ගෙන එමත් අනිවාර්යයි. Priority customer නොවන පුද්ගලයන්ට Rs.100 ක් reload fee ගෙවිය යුතුය. Priority customer නම"
 
 
     synthesis_input = texttospeech.SynthesisInput(text=text)
