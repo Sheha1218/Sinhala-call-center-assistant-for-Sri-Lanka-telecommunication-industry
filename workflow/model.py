@@ -1,5 +1,5 @@
 import torch
-from workflow.first import models
+from .first import models
  
 
 class modeloutput:

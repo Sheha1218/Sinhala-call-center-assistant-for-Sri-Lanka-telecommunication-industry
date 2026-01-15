@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from audio.play import first,second,third
 from workflow.model import modeloutput
+from db.verification import verification
 
 
 app=FastAPI()
@@ -18,19 +19,28 @@ app.add_middleware(
 )
 static = Jinja2Templates(directory='static')
 
-s_first=first
-S_second = second
-s_third=third
-model =modeloutput
+s_first=first()
+S_second = second()
+s_third=third()
+model =modeloutput()
+verification=verification()
 
-class main:
-    def __init__(self):
-        self.audio = s_first()
+
+def audio1():
+    audio1 = s_first()
         
-    def first_audio(self):
-        self.audio.play(r'audio\Shehan 1.mp3')
+    def first_audio():
+        s_first.play(r'audio\Shehan 1.mp3')
 
-main().first_audio()
+
+
+def verification_loop():
+    if verification.valid == True:
+        return 
+    else:
+        S_second.play(r'audio\Shehan 2.mp3')
+        
+        
 
 
 class chatrequest(BaseModel):
