@@ -1,62 +1,49 @@
-from fastapi import FastAPI,Request
-from fastapi.responses import HTMLResponse,StreamingResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
-from audio.play import first,second,third
-from workflow.model import modeloutput
-from db.verification import verification
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 
-app=FastAPI()
+from workflow.model import workflow
+from TTS.tts import TTS_route
+from stt.sst import STT_route
+from db.verification import verification_router
+from filters.name_nic import name_nic_router
+from audio.routes import audio_router
+from feedback.feedback import feedback_router
+
+
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin=['*'],
+    allow_origins=['*'],
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
 )
+
+# Mount static directory so static files (index.html) are served
+app.mount("/static", StaticFiles(directory="static"), name="static")
 static = Jinja2Templates(directory='static')
 
-s_first=first()
-S_second = second()
-s_third=third()
-model =modeloutput()
-verification=verification()
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    # Serve the React single-file UI from static/index.html
+    return Path("static/index.html").read_text(encoding="utf-8")
 
 
-def audio1():
-    audio1 = s_first()
-        
-    def first_audio():
-        s_first.play(r'audio\Shehan 1.mp3')
-
-
-
-def verification_loop():
-    if verification.valid == True:
-        return 
-    else:
-        S_second.play(r'audio\Shehan 2.mp3')
-        
-        
-
-
-class chatrequest(BaseModel):
-    message:str
-    
-class response(BaseModel):
-    reply:str
-    
-
-@app.post('/chat',response_model=response)
-def chat(req:chatrequest):
-    response = model.message(req.message)
-    return {"reply":response}
-    
-    
-    
+app.include_router(workflow)
+app.include_router(TTS_route)
+app.include_router(STT_route)
+app.include_router(verification_router)
+app.include_router(name_nic_router)
+app.include_router(audio_router)
+app.include_router(feedback_router)
 
 
 
@@ -72,4 +59,6 @@ def chat(req:chatrequest):
 
 
 if __name__ == '__main__':
-    app.run(debug=True,)
+    import uvicorn
+
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

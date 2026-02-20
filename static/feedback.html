@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ප්‍රතිපෝෂණ — Feedback</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Noto Sans Sinhala',sans-serif;padding:24px}
+    .container{width:700px;max-width:95vw;background:#0f3460;border:2px solid #16a085;border-radius:16px;padding:40px;box-shadow:0 8px 32px rgba(0,0,0,0.3)}
+    
+    h1{color:#fff;text-align:center;margin-bottom:10px;font-size:2rem}
+    .subtitle{color:#aaa;text-align:center;margin-bottom:30px;font-size:0.95rem}
+    
+    .section{margin-bottom:32px;padding-bottom:20px;border-bottom:1px solid #16a085}
+    .section:last-child{border-bottom:none}
+    .section-title{color:#06d6a0;font-weight:700;margin-bottom:16px;font-size:1.2rem}
+    
+    .form-group{margin-bottom:24px}
+    label{display:block;color:#fff;margin-bottom:8px;font-weight:500}
+    input[type="text"],input[type="tel"]{width:100%;padding:12px;background:#1a2634;border:1px solid #16a085;border-radius:8px;color:#fff;font-size:1rem;font-family:'Noto Sans Sinhala',sans-serif}
+    input[type="text"]:focus,input[type="tel"]:focus{outline:none;border-color:#06d6a0;box-shadow:0 0 8px rgba(6,214,160,0.3)}
+    
+    .rating-container{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:24px}
+    .rating-btn{width:50px;height:50px;border-radius:50%;border:2px solid #16a085;background:#1a2634;color:#fff;cursor:pointer;font-weight:700;font-size:1rem;transition:all 0.2s}
+    .rating-btn:hover{border-color:#06d6a0;transform:scale(1.1)}
+    .rating-btn.selected{background:#16a085;border-color:#06d6a0;box-shadow:0 0 12px rgba(6,214,160,0.5)}
+    
+    .message-group{margin-bottom:24px}
+    textarea{width:100%;padding:12px;background:#1a2634;border:1px solid #16a085;border-radius:8px;color:#fff;font-size:0.95rem;resize:vertical;min-height:100px;font-family:'Noto Sans Sinhala',sans-serif}
+    textarea:focus{outline:none;border-color:#06d6a0;box-shadow:0 0 8px rgba(6,214,160,0.3)}
+    
+    .button-group{display:flex;gap:12px;justify-content:center}
+    button{padding:12px 28px;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1rem;transition:all 0.2s;font-family:'Noto Sans Sinhala',sans-serif}
+    .btn-submit{background:#16a085;color:#fff}
+    .btn-submit:hover:not(:disabled){background:#06d6a0;transform:translateY(-2px);box-shadow:0 4px 12px rgba(6,214,160,0.3)}
+    .btn-submit:disabled{opacity:0.5;cursor:not-allowed}
+    
+    .message{margin-top:16px;padding:12px;border-radius:8px;text-align:center;font-weight:500}
+    .message.success{background:#16a085;color:#fff}
+    .message.error{background:#e94560;color:#fff}
+    .message.info{background:#0084d4;color:#fff}
+    
+    .spinner{width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;animation:spin 0.8s linear infinite}
+    @keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+    .loading{display:flex;align-items:center;gap:8px}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const {useState} = React;
+
+    function FeedbackApp(){
+      const [rating, setRating] = useState(null);
+      const [feedbackMessage, setFeedbackMessage] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [message, setMessage] = useState(null);
+
+      async function handleSubmitRating(e){
+        e.preventDefault();
+
+        if(rating === null){
+          setMessage({type:'error', text:'කරුණාකර ප්‍රතිපෝෂණ ශ්‍රේණිය තෝරා ගන්න'});
+          return;
+        }
+
+        setLoading(true);
+        setMessage(null);
+
+        try{
+          const res = await fetch('/feedback-value', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              feedback_value: rating
+            })
+          });
+
+          const data = await res.json();
+
+          if(res.ok){
+            setMessage({type:'success', text:`ස්තුතියි! ඔබේ ශ්‍රේණිය (${rating}/10) සංරක්ෂණය කරන ලදී — ID: ${data.feedback_id}`});
+            setRating(null);
+          } else {
+            setMessage({type:'error', text:`දෝෂය: ${data.detail}`});
+          }
+        }catch(err){
+          console.error(err);
+          setMessage({type:'error', text:`දෝෂය: ${err.message}`});
+        }finally{
+          setLoading(false);
+        }
+      }
+
+      async function handleSubmitMessage(e){
+        e.preventDefault();
+
+        if(!feedbackMessage.trim()){
+          setMessage({type:'error', text:'කරුණාකර ප්‍රතිපෝෂණ පණිවුඩ ඇතුළු කරන්න'});
+          return;
+        }
+
+        setLoading(true);
+        setMessage(null);
+
+        try{
+          const res = await fetch('/feedback-message', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              feedback_message: feedbackMessage
+            })
+          });
+
+          const data = await res.json();
+
+          if(res.ok){
+            setMessage({type:'success', text:`ස්තුතියි! ඔබේ පණිවුඩ සංරක්ෂණය කරන ලදී — ID: ${data.feedback_id}`});
+            setFeedbackMessage('');
+          } else {
+            setMessage({type:'error', text:`දෝෂය: ${data.detail}`});
+          }
+        }catch(err){
+          console.error(err);
+          setMessage({type:'error', text:`දෝෂය: ${err.message}`});
+        }finally{
+          setLoading(false);
+        }
+      }
+
+      return (
+        <div className="container">
+          <h1>ප්‍රතිපෝෂණ</h1>
+          <p className="subtitle">ඔබේ අත්‍යවශ්‍ය ප්‍රකාශන අපට දැනුවන්න — Please share your feedback</p>
+          
+          {/* No personal identifiers required for feedback */}
+
+          {/* Status Message */}
+          {message && (
+            <div className={`message ${message.type}`}>
+              {message.text}
+            </div>
+          )}
+          
+          {/* Section 1: Feedback Rating */}
+          <div className="section">
+            <div className="section-title">⭐ Endpoint 1: Rating (0-10)</div>
+            <form onSubmit={handleSubmitRating}>
+              <label>ඔබේ ප්‍රතිපෝෂණ ශ්‍රේණිය තෝරා ගන්න</label>
+              <div className="rating-container">
+                {Array.from({length:11}, (_,i)=>i).map(i=>(
+                  <button
+                    key={i}
+                    type="button"
+                    className={`rating-btn ${rating===i ? 'selected' : ''}`}
+                    onClick={()=>setRating(i)}
+                    title={`Rating ${i}`}
+                  >
+                    {i}
+                  </button>
+                ))}
+              </div>
+              <div className="button-group">
+                <button 
+                  type="submit" 
+                  className="btn-submit" 
+                  disabled={loading}
+                >
+                  {loading ? <span className="loading"><span className="spinner"></span>යවමින්...</span> : '✓ ශ්‍රේණිය යවන්න'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Section 2: Feedback Message */}
+          <div className="section">
+            <div className="section-title">💬 Endpoint 2: Message</div>
+            <form onSubmit={handleSubmitMessage}>
+              <div className="message-group">
+                <label htmlFor="msg">ඔබේ ප්‍රතිපෝෂණ පණිවුඩ ඇතුළු කරන්න</label>
+                <textarea 
+                  id="msg"
+                  value={feedbackMessage}
+                  onChange={(e)=>setFeedbackMessage(e.target.value)}
+                  placeholder="ඔබේ අත්‍යවශ්‍ය ප්‍රකාශන ඇතුළු කරන්න... ඔබ අපගේ සේවාවන් ගැන කුමක් සිතනවාද?"
+                ></textarea>
+              </div>
+              <div className="button-group">
+                <button 
+                  type="submit" 
+                  className="btn-submit" 
+                  disabled={loading}
+                >
+                  {loading ? <span className="loading"><span className="spinner"></span>යවමින්...</span> : '✓ පණිවුඩ යවන්න'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<FeedbackApp />);
+  </script>
+</body>
+</html>
