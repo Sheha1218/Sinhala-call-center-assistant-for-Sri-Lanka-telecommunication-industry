@@ -25,12 +25,13 @@ class CallCenterEnvironment:
         self.current_call_id = None
         self.call_history = deque(maxlen=1000)
         
-    def fetch_call_episodes(self, batch_size=32):
-      
+    def fetch_call_episodes(self, batch_size=100):
+        """Fetch feedback with ai_response for PPO training. Batch of 100 by default."""
         query = f"""
             SELECT feedback_id, customer_nic, connection_number, 
-                   feedback_value, feedback_message, created_at 
+                   feedback_value, feedback_message, ai_response, created_at 
             FROM {self.feedback_table}
+            WHERE feedback_value IS NOT NULL
             ORDER BY created_at DESC
             LIMIT {batch_size};
         """
@@ -43,8 +44,12 @@ class CallCenterEnvironment:
             return pd.DataFrame()
     
     def convert_feedback_to_reward(self, feedback_value):
-        
-        
+        """
+        Map feedback_value (0-10) to reward for PPO.
+        0-6: bad -> reward in [-1, 0.2]
+        7-8: neutral -> reward in [0.4, 0.6]
+        9-10: good -> reward in [0.8, 1]
+        """
         normalized = (feedback_value / 10.0) * 2 - 1
         return normalized
     
@@ -166,7 +171,7 @@ class PPOAgent:
         self.max_grad_norm = 0.5
         
         # Training state
-        self.memory = PPOMemory(batch_size=32)
+        self.memory = PPOMemory(batch_size=min(32, 100))  # PPO trains on 100 feedbacks, batch 32 per step
         self.training_step = 0
         self.training_history = []
         

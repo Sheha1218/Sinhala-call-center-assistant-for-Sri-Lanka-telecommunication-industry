@@ -11,8 +11,6 @@ from RL_enviroment.ppo_agent import PPOAgent, get_ppo_agent
 
 
 class FeedbackOptimizationManager:
-   
-    
     def __init__(self, check_interval_minutes=60):
         
         self.optimizer = FeedbackOptimizer()
@@ -41,7 +39,7 @@ class FeedbackOptimizationManager:
             return False
         
         if self.is_running:
-            print("⚠ Scheduler is already running")
+            print("Scheduler is already running")
             return False
         
         self.is_running = True
@@ -54,7 +52,7 @@ class FeedbackOptimizationManager:
         self.thread.name = "FeedbackOptimizer"
         self.thread.start()
         
-        print(f"✓ Background feedback optimizer started (checks every {self.check_interval} minutes)")
+        print(f"Background feedback optimizer started (checks every {self.check_interval} minutes)")
         return True
     
     def _run_scheduler(self):
@@ -108,8 +106,9 @@ class ManualOptimizationTrigger:
         print(f"Median Rating: {metrics['median_feedback_value']:.2f}/10")
         print(f"Std Deviation: {metrics['std_feedback_value']:.2f}")
         print(f"Range: {metrics['min_feedback_value']} - {metrics['max_feedback_value']}")
-        print(f"\nPositive Feedbacks (≥7): {metrics['positive_feedback_count']} ({metrics['positive_feedback_count']/metrics['total_feedbacks']*100:.1f}%)")
-        print(f"Negative Feedbacks (<5): {metrics['negative_feedback_count']} ({metrics['negative_feedback_count']/metrics['total_feedbacks']*100:.1f}%)")
+        print(f"\nGood Feedbacks (9-10): {metrics['positive_feedback_count']} ({metrics['positive_feedback_count']/metrics['total_feedbacks']*100:.1f}%)")
+        print(f"Neutral Feedbacks (7-8): {metrics.get('neutral_feedback_count', 0)} ({metrics.get('neutral_feedback_count', 0)/metrics['total_feedbacks']*100:.1f}%)")
+        print(f"Bad Feedbacks (0-6): {metrics['negative_feedback_count']} ({metrics['negative_feedback_count']/metrics['total_feedbacks']*100:.1f}%)")
         
         # Show threshold status
         threshold_status = "✓ READY FOR OPTIMIZATION" if metrics['total_feedbacks'] >= self.optimizer.FEEDBACK_THRESHOLD else "✗ NOT YET"
@@ -245,15 +244,6 @@ def integrate_feedback_optimization(app=None, use_background=True, check_interva
 
 # Convenience function for PPO training
 def train_ppo_with_optimization(num_episodes=100):
-    """
-    Train PPO agent and optimize parameters in one integrated pipeline.
-    
-    Args:
-        num_episodes: Number of feedback episodes to train on
-        
-    Returns:
-        dict: Combined results from training and optimization
-    """
     manager = PPOTrainingManager()
     return manager.train_and_optimize(num_episodes=num_episodes)
 

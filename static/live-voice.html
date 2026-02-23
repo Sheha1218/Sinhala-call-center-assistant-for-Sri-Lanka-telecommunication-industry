@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>කෙයාරා — Sinhala Call Center Assistant</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100vh;font-family:'Noto Sans Sinhala',sans-serif;padding:24px;color:#fff}
+    .container{max-width:600px;margin:0 auto}
+    h1{text-align:center;margin-bottom:8px;color:#06d6a0}
+    .subtitle{text-align:center;color:#aaa;margin-bottom:24px}
+    .status{padding:12px;background:#1a2634;border-radius:8px;margin-bottom:16px;min-height:48px}
+    .status.connected{border-left:4px solid #06d6a0}
+    .status.error{border-left:4px solid #e94560}
+    .status.playing{border-left:4px solid #facc15}
+    .status.listening{border-left:4px solid #06d6a0}
+    .controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;justify-content:center}
+    button{padding:14px 28px;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-family:inherit;transition:all 0.2s;font-size:1rem}
+    .btn-connect{background:#16a085;color:#fff}
+    .btn-connect:hover:not(:disabled){background:#06d6a0;transform:scale(1.02)}
+    .btn-disconnect{background:#e94560;color:#fff}
+    button:disabled{opacity:0.5;cursor:not-allowed}
+    .transcript{background:#1a2634;border-radius:8px;padding:16px;min-height:120px;max-height:320px;overflow-y:auto;white-space:pre-wrap;font-size:0.9rem;margin-top:16px}
+    .feedback-link{margin-top:24px;text-align:center}
+    .feedback-link a{color:#06d6a0;text-decoration:none;border:1px solid #16a085;padding:10px 20px;border-radius:8px;display:inline-block}
+    .feedback-link a:hover{background:#16a085;color:#fff}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>කෙයාරා — Voice Assistant</h1>
+    <p class="subtitle"></p>
+
+    <div id="status" class="status">Disconnected. Click Connect to start.</div>
+    <div id="urlWarning" style="display:none;color:#facc15;font-size:0.85rem;margin-bottom:12px;text-align:center">
+      ⚠ Use <strong>http://127.0.0.1:8000/voice</strong> (not file://) so API calls work.
+    </div>
+
+    <div class="controls">
+      <button id="btnConnect" class="btn-connect">Connect</button>
+      <button id="btnDisconnect" class="btn-disconnect" disabled>Disconnect</button>
+    </div>
+
+    <div class="transcript" id="transcript"></div>
+
+    <div class="feedback-link">
+      <a href="/static/feedback.html" id="feedbackLink">ප්‍රතිපෝෂණ දෙන්න / Give Feedback</a>
+    </div>
+  </div>
+
+  <script>
+    // API base - use same origin when served from server; fallback for file:// open
+    const API_BASE = (window.location.origin && window.location.origin.startsWith('http'))
+      ? window.location.origin : 'http://127.0.0.1:8000';
+    const USE_LIVE_API = false;
+    const GREETING = "ආයුබෝවන් ABC ආයතනයෙන් මම කෙයාරා කෙසෙද මා ඔබට සහය වන්නේ.";
+    const FOLLOW_UP = "ඔබට තවත් දෙයක් ගැනිමට හෝ මගෙන් වෙනත් උපකාරයක් අවශදද?";
+    const YES_PROMPT = "ඔව් මොකක්ද ඔබට මගෙන් අවශ්‍ය උපකාරය.";
+    const GOODBYE = "ඔබට අවශ්‍ය උපකාරය ලබා දීමට මට සතුටුයි. ඔබට සුභ දවසක්.";
+    const RATE_MSG = "Service එක rate කරන්න කියලා කාරුනිකව ඉල්ලා සිටිනවා.";
+    const CAPTURE_SECONDS = 10;
+
+    let sessionId = null;
+    let isConnected = false;
+    let recognition = null;
+    let captureTimeout = null;
+
+    const statusEl = document.getElementById('status');
+    const btnConnect = document.getElementById('btnConnect');
+    const btnDisconnect = document.getElementById('btnDisconnect');
+    const transcriptEl = document.getElementById('transcript');
+    const feedbackLink = document.getElementById('feedbackLink');
+
+    function setStatus(msg, cls) {
+      statusEl.textContent = msg;
+      statusEl.className = 'status' + (cls ? ' ' + cls : '');
+    }
+
+    function appendTranscript(who, text) {
+      if (!text) return;
+      const p = document.createElement('p');
+      p.innerHTML = '<strong>' + who + ':</strong> ' + text;
+      transcriptEl.appendChild(p);
+      transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    }
+
+    async function playTts(text) {
+      setStatus('Playing...', 'playing');
+      try {
+        const res = await fetch(API_BASE + '/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const d = await res.json();
+          throw new Error(d.error || 'TTS not configured');
+        }
+        const blob = await res.blob();
+        const audio = new Audio(URL.createObjectURL(blob));
+        await new Promise((resolve, reject) => {
+          audio.onended = () => { URL.revokeObjectURL(audio.src); resolve(); };
+          audio.onerror = reject;
+          audio.play();
+        });
+      } catch (e) {
+        setStatus('TTS: ' + e.message, 'error');
+        throw e;
+      }
+    }
+
+    async function postToLlm(message) {
+      setStatus('LLM processing...', 'playing');
+      try {
+        const msg = (message === undefined || message === null) ? '' : String(message).trim();
+        const url = API_BASE + '/llm';
+        console.log('[API] POST', url, { message: msg, session_id: sessionId });
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, session_id: sessionId })
+        });
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const data = await res.json();
+          if (data.text) appendTranscript('Assistant', data.text);
+          throw new Error(data.error || 'TTS not configured');
+        }
+        const blob = await res.blob();
+        const audio = new Audio(URL.createObjectURL(blob));
+        await new Promise((resolve, reject) => {
+          audio.onended = () => { URL.revokeObjectURL(audio.src); resolve(); };
+          audio.onerror = reject;
+          audio.play();
+        });
+      } catch (e) {
+        console.error('LLM error:', e);
+        setStatus('Error: ' + e.message, 'error');
+      }
+    }
+
+    async function captureVoiceLiveApi() {
+      const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = wsProto + '//' + location.host + '/live/ws/user-' + Date.now() + '/' + (sessionId || 'capture');
+      const ws = new WebSocket(wsUrl);
+      const transcriptions = [];
+      return new Promise((resolve) => {
+        ws.onopen = () => {
+          setStatus('Listening via Live API... (' + CAPTURE_SECONDS + ' sec)', 'listening');
+          navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            const src = ctx.createMediaStreamSource(stream);
+            const proc = ctx.createScriptProcessor(4096, 1, 1);
+            src.connect(proc);
+            proc.connect(ctx.destination);
+            proc.onaudioprocess = (e) => {
+              if (ws.readyState !== 1) return;
+              const d = e.inputBuffer.getChannelData(0);
+              const pcm = new Int16Array(d.length);
+              for (let i = 0; i < d.length; i++) pcm[i] = Math.max(-32768, Math.min(32767, d[i] * 32768));
+              ws.send(pcm.buffer);
+            };
+            setTimeout(() => {
+              proc.disconnect();
+              stream.getTracks().forEach(t => t.stop());
+              ws.close();
+            }, CAPTURE_SECONDS * 1000);
+          }).catch(() => resolve(''));
+        };
+        ws.onmessage = (e) => {
+          try {
+            const ev = JSON.parse(e.data);
+            const t = ev.input_transcription?.text || ev.inputTranscription?.text;
+            if (t) transcriptions.push(t);
+          } catch (_) {}
+        };
+        ws.onclose = () => resolve(transcriptions.join(' ').trim());
+      });
+    }
+
+    function captureVoice() {
+      if (USE_LIVE_API) return captureVoiceLiveApi();
+      return new Promise((resolve) => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          resolve('');
+          return;
+        }
+        const rec = new SpeechRecognition();
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.lang = 'si-LK';
+        let finalText = '';
+        let interimText = '';
+        rec.onresult = (e) => {
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const t = e.results[i][0].transcript;
+            if (e.results[i].isFinal) finalText += t;
+            else interimText = t;
+          }
+        };
+        rec.onend = () => {
+          clearTimeout(captureTimeout);
+          resolve((finalText + interimText).trim());
+        };
+        rec.onerror = () => resolve(finalText || interimText);
+        setStatus('Listening... (' + CAPTURE_SECONDS + ' sec)', 'listening');
+        rec.start();
+        captureTimeout = setTimeout(() => rec.stop(), CAPTURE_SECONDS * 1000);
+      });
+    }
+
+    function isYes(text) {
+      const t = (text || '').trim().toLowerCase();
+      return /^ඔව්|^ow|^yes|ඔව්\s*$/.test(t) || t === 'ඔව්';
+    }
+    function isNo(text) {
+      const t = (text || '').trim().toLowerCase();
+      return /^නැහැ|^නැ|^no|නැහැ\s*$/.test(t) || t === 'නැහැ' || t === 'නැ';
+    }
+
+    async function mainLoop() {
+      const captured = await captureVoice();
+      appendTranscript('You', captured || '(no input)');
+      // Always pass to LLM - even when nothing captured (empty string)
+      await postToLlm(captured === undefined ? '' : captured);
+      await playTts(FOLLOW_UP);
+      const response = await captureVoice();
+      appendTranscript('You', response || '(no input)');
+      if (isYes(response)) {
+        await playTts(YES_PROMPT);
+        return mainLoop();
+      } else {
+        await playTts(GOODBYE);
+        await playTts(RATE_MSG);
+        setStatus('Conversation ended.', 'connected');
+        return;
+      }
+    }
+
+    async function connect() {
+      try {
+        setStatus('Connecting...', '');
+        const res = await fetch(API_BASE + '/live/session-id');
+        const data = await res.json();
+        sessionId = data.session_id;
+        feedbackLink.href = '/static/feedback.html?session_id=' + encodeURIComponent(sessionId);
+
+        await playTts(GREETING);
+
+        isConnected = true;
+        setStatus('Connected. Mic open. Capturing...', 'connected');
+        btnConnect.disabled = true;
+        btnDisconnect.disabled = false;
+
+        mainLoop();
+      } catch (err) {
+        setStatus('Error: ' + err.message, 'error');
+      }
+    }
+
+    function disconnect() {
+      isConnected = false;
+      sessionId = null;
+      if (captureTimeout) clearTimeout(captureTimeout);
+      if (recognition) recognition.stop();
+      setStatus('Disconnected. Click Connect to start.', '');
+      btnConnect.disabled = false;
+      btnDisconnect.disabled = true;
+    }
+
+    if (!window.location.origin.startsWith('http')) {
+      document.getElementById('urlWarning').style.display = 'block';
+    }
+
+    btnConnect.addEventListener('click', connect);
+    btnDisconnect.addEventListener('click', disconnect);
+  </script>
+</body>
+</html>

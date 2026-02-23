@@ -55,13 +55,20 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <script type="text/babel">
-    const {useState} = React;
+    const {useState, useEffect} = React;
+
+    function getSessionIdFromUrl(){
+      const params = new URLSearchParams(window.location.search);
+      return params.get('session_id') || '';
+    }
 
     function FeedbackApp(){
       const [rating, setRating] = useState(null);
       const [feedbackMessage, setFeedbackMessage] = useState('');
       const [loading, setLoading] = useState(false);
       const [message, setMessage] = useState(null);
+      const [sessionId, setSessionId] = useState('');
+      useEffect(() => setSessionId(getSessionIdFromUrl()), []);
 
       async function handleSubmitRating(e){
         e.preventDefault();
@@ -93,6 +100,39 @@
           }
         }catch(err){
           console.error(err);
+          setMessage({type:'error', text:`දෝෂය: ${err.message}`});
+        }finally{
+          setLoading(false);
+        }
+      }
+
+      async function handleSubmitFull(e){
+        e.preventDefault();
+        if(rating === null){
+          setMessage({type:'error', text:'කරුණාකර ප්‍රතිපෝෂණ ශ්‍රේණිය තෝරා ගන්න'});
+          return;
+        }
+        setLoading(true);
+        setMessage(null);
+        try{
+          const res = await fetch('/feedback-full', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              feedback_value: rating,
+              feedback_message: feedbackMessage,
+              session_id: sessionId || null
+            })
+          });
+          const data = await res.json();
+          if(res.ok){
+            setMessage({type:'success', text:`ස්තුතියි! ඔබේ ප්‍රතිපෝෂණ (${rating}/10) සහ ai_response සංරක්ෂණය කරන ලදී — ID: ${data.feedback_id}`});
+            setRating(null);
+            setFeedbackMessage('');
+          } else {
+            setMessage({type:'error', text:`දෝෂය: ${data.detail}`});
+          }
+        }catch(err){
           setMessage({type:'error', text:`දෝෂය: ${err.message}`});
         }finally{
           setLoading(false);
@@ -149,10 +189,10 @@
             </div>
           )}
           
-          {/* Section 1: Feedback Rating */}
+          {/* Combined: Rating + Message + AI response (via session_id from voice call) */}
           <div className="section">
-            <div className="section-title">⭐ Endpoint 1: Rating (0-10)</div>
-            <form onSubmit={handleSubmitRating}>
+            <div className="section-title">⭐ ශ්‍රේණිය සහ පණිවුඩ (0-10)</div>
+            <form onSubmit={handleSubmitFull}>
               <label>ඔබේ ප්‍රතිපෝෂණ ශ්‍රේණිය තෝරා ගන්න</label>
               <div className="rating-container">
                 {Array.from({length:11}, (_,i)=>i).map(i=>(
@@ -167,39 +207,34 @@
                   </button>
                 ))}
               </div>
+              <div className="message-group">
+                <label htmlFor="msg">ඔබේ ප්‍රතිපෝෂණ පණිවුඩ (අමතර)</label>
+                <textarea 
+                  id="msg"
+                  value={feedbackMessage}
+                  onChange={(e)=>setFeedbackMessage(e.target.value)}
+                  placeholder="ඔබේ අත්‍යවශ්‍ය ප්‍රකාශන ඇතුළු කරන්න..."
+                ></textarea>
+              </div>
               <div className="button-group">
-                <button 
-                  type="submit" 
-                  className="btn-submit" 
-                  disabled={loading}
-                >
-                  {loading ? <span className="loading"><span className="spinner"></span>යවමින්...</span> : '✓ ශ්‍රේණිය යවන්න'}
+                <button type="submit" className="btn-submit" disabled={loading}>
+                  {loading ? <span className="loading"><span className="spinner"></span>යවමින්...</span> : '✓ ප්‍රතිපෝෂණ යවන්න'}
                 </button>
               </div>
             </form>
           </div>
 
-          {/* Section 2: Feedback Message */}
+          {/* Legacy: separate endpoints */}
           <div className="section">
-            <div className="section-title">💬 Endpoint 2: Message</div>
-            <form onSubmit={handleSubmitMessage}>
-              <div className="message-group">
-                <label htmlFor="msg">ඔබේ ප්‍රතිපෝෂණ පණිවුඩ ඇතුළු කරන්න</label>
-                <textarea 
-                  id="msg"
-                  value={feedbackMessage}
-                  onChange={(e)=>setFeedbackMessage(e.target.value)}
-                  placeholder="ඔබේ අත්‍යවශ්‍ය ප්‍රකාශන ඇතුළු කරන්න... ඔබ අපගේ සේවාවන් ගැන කුමක් සිතනවාද?"
-                ></textarea>
-              </div>
+            <div className="section-title">💬 පැරණි: වෙනම යවන්න</div>
+            <form onSubmit={handleSubmitRating}>
               <div className="button-group">
-                <button 
-                  type="submit" 
-                  className="btn-submit" 
-                  disabled={loading}
-                >
-                  {loading ? <span className="loading"><span className="spinner"></span>යවමින්...</span> : '✓ පණිවුඩ යවන්න'}
-                </button>
+                <button type="submit" className="btn-submit" disabled={loading}>ශ්‍රේණිය පමණක්</button>
+              </div>
+            </form>
+            <form onSubmit={handleSubmitMessage} style={{marginTop:12}}>
+              <div className="button-group">
+                <button type="submit" className="btn-submit" disabled={loading}>පණිවුඩ පමණක්</button>
               </div>
             </form>
           </div>

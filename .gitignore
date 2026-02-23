@@ -20,6 +20,7 @@ model/*
 model/
 # Ignore secret and temporary files
 sinhala-call-center-agent.json
+*sinhala-call-center-agent*.json
 research.ipynb
 e -i HEAD~3
 lib64/

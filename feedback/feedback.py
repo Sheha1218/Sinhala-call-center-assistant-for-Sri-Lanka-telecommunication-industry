@@ -4,6 +4,8 @@ from sqlalchemy import create_engine, text
 import os
 from dotenv import load_dotenv
 
+from .session_store import get_last_ai_response, clear_session
+
 load_dotenv()
 
 feedback_router = APIRouter()
@@ -21,14 +23,41 @@ class FeedbackMessageRequest(BaseModel):
     feedback_message: str
 
 
+class FeedbackFullRequest(BaseModel):
+    """Combined feedback with optional session_id to link ai_response"""
+    feedback_value: int = Field(..., ge=0, le=10, description="Feedback rating from 0 to 10")
+    feedback_message: str = ""
+    session_id: str | None = None
+
+
 class FeedbackResponse(BaseModel):
     status: str
     message: str
     feedback_id: int | None = None
 
 
+def save_ai_response_to_db(ai_response: str, session_id: str | None = None) -> int | None:
+    """Save ai_response to customer_feedback table (call_agent DB). Returns feedback_id."""
+    ensure_feedback_table()
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    INSERT INTO customer_feedback (ai_response)
+                    VALUES (:ai_response)
+                    RETURNING feedback_id;
+                """),
+                {"ai_response": ai_response}
+            )
+            conn.commit()
+            return result.fetchone()[0]
+    except Exception as e:
+        print(f"Error saving ai_response: {e}")
+        return None
+
+
 def ensure_feedback_table():
-    """Create feedback table with feedback_value and feedback_message columns if it doesn't exist"""
+    """Create feedback table with feedback_value, feedback_message, and ai_response columns if it doesn't exist"""
     try:
         with engine.connect() as conn:
             create_table_query = """
@@ -38,11 +67,23 @@ def ensure_feedback_table():
                 connection_number VARCHAR(50),
                 feedback_value INTEGER CHECK (feedback_value >= 0 AND feedback_value <= 10),
                 feedback_message TEXT,
+                ai_response TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """
             conn.execute(text(create_table_query))
             conn.commit()
+            # Add ai_response column if table already existed without it (PostgreSQL)
+            try:
+                check_col = conn.execute(text("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name='customer_feedback' AND column_name='ai_response';
+                """)).fetchone()
+                if not check_col:
+                    conn.execute(text("ALTER TABLE customer_feedback ADD COLUMN ai_response TEXT;"))
+                    conn.commit()
+            except Exception:
+                pass
     except Exception as e:
         print(f"Error creating table: {str(e)}")
 
@@ -82,6 +123,43 @@ async def submit_feedback_value(request: FeedbackValueRequest):
             status_code=500,
             detail=f"Error saving feedback value: {str(e)}"
         )
+
+
+@feedback_router.post("/feedback-full", response_model=FeedbackResponse)
+async def submit_feedback_full(request: FeedbackFullRequest):
+    """
+    Combined endpoint: Submit feedback_value, feedback_message, and ai_response (from session_id).
+    Saves to customer_feedback with ai_response column.
+    """
+    ensure_feedback_table()
+    ai_response = ""
+    if request.session_id:
+        ai_response = get_last_ai_response(request.session_id)
+        clear_session(request.session_id)
+    try:
+        with engine.connect() as conn:
+            insert_query = """
+            INSERT INTO customer_feedback (feedback_value, feedback_message, ai_response)
+            VALUES (:feedback_value, :feedback_message, :ai_response)
+            RETURNING feedback_id;
+            """
+            result = conn.execute(
+                text(insert_query),
+                {
+                    "feedback_value": request.feedback_value,
+                    "feedback_message": request.feedback_message,
+                    "ai_response": ai_response or None,
+                }
+            )
+            conn.commit()
+            feedback_id = result.fetchone()[0]
+            return FeedbackResponse(
+                status="success",
+                message=f"Feedback ({request.feedback_value}/10) සහ ai_response සංරක්ෂණය කරන ලදී",
+                feedback_id=feedback_id
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving feedback: {str(e)}")
 
 
 @feedback_router.post("/feedback-message", response_model=FeedbackResponse)

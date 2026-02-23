@@ -58,8 +58,9 @@ class FeedbackOptimizer:
     def fetch_feedback_data(self):
         query = f"""
             SELECT feedback_id, customer_nic, connection_number, 
-                   feedback_value, feedback_message, created_at 
+                   feedback_value, feedback_message, ai_response, created_at 
             FROM {self.feedback_table}
+            WHERE feedback_value IS NOT NULL
             ORDER BY created_at DESC;
         """
         try:
@@ -81,8 +82,10 @@ class FeedbackOptimizer:
             'std_feedback_value': feedback_df['feedback_value'].std() if 'feedback_value' in feedback_df.columns else 0,
             'min_feedback_value': feedback_df['feedback_value'].min() if 'feedback_value' in feedback_df.columns else 0,
             'max_feedback_value': feedback_df['feedback_value'].max() if 'feedback_value' in feedback_df.columns else 0,
-            'positive_feedback_count': len(feedback_df[feedback_df['feedback_value'] >= 7]) if 'feedback_value' in feedback_df.columns else 0,
-            'negative_feedback_count': len(feedback_df[feedback_df['feedback_value'] < 5]) if 'feedback_value' in feedback_df.columns else 0,
+            # 0-6: bad, 7-8: neutral, 9-10: good
+            'positive_feedback_count': len(feedback_df[feedback_df['feedback_value'] >= 9]) if 'feedback_value' in feedback_df.columns else 0,
+            'neutral_feedback_count': len(feedback_df[(feedback_df['feedback_value'] >= 7) & (feedback_df['feedback_value'] <= 8)]) if 'feedback_value' in feedback_df.columns else 0,
+            'negative_feedback_count': len(feedback_df[feedback_df['feedback_value'] <= 6]) if 'feedback_value' in feedback_df.columns else 0,
         }
         
         return metrics
@@ -111,7 +114,7 @@ class FeedbackOptimizer:
         }
         
         avg_feedback = metrics['avg_feedback_value']
-        positive_ratio = metrics['positive_feedback_count'] / metrics['total_feedbacks']
+        positive_ratio = metrics['positive_feedback_count'] / metrics['total_feedbacks']  # 9-10 = good
         
         # Feedback-based adjustments
         if avg_feedback < 4:
