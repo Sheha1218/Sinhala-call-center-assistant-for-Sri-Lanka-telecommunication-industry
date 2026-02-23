@@ -127,10 +127,6 @@ async def submit_feedback_value(request: FeedbackValueRequest):
 
 @feedback_router.post("/feedback-full", response_model=FeedbackResponse)
 async def submit_feedback_full(request: FeedbackFullRequest):
-    """
-    Combined endpoint: Submit feedback_value, feedback_message, and ai_response (from session_id).
-    Saves to customer_feedback with ai_response column.
-    """
     ensure_feedback_table()
     ai_response = ""
     if request.session_id:
@@ -164,10 +160,6 @@ async def submit_feedback_full(request: FeedbackFullRequest):
 
 @feedback_router.post("/feedback-message", response_model=FeedbackResponse)
 async def submit_feedback_message(request: FeedbackMessageRequest):
-    """
-    Endpoint 2: Submit customer feedback message
-    Saves feedback_message text to database with customer NIC and connection details
-    """
     ensure_feedback_table()
     
     try:

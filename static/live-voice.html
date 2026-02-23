@@ -30,7 +30,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>කෙයාරා — Voice Assistant</h1>
+    <h1>කෙයාරා —  Sinhala Call Center Assistant</h1>
     <p class="subtitle"></p>
 
     <div id="status" class="status">Disconnected. Click Connect to start.</div>
@@ -46,7 +46,7 @@
     <div class="transcript" id="transcript"></div>
 
     <div class="feedback-link">
-      <a href="/static/feedback.html" id="feedbackLink">ප්‍රතිපෝෂණ දෙන්න / Give Feedback</a>
+      <a href="/static/feedback.html" id="feedbackLink">Give Feedback</a>
     </div>
   </div>
 
@@ -55,14 +55,10 @@
     const API_BASE = (window.location.origin && window.location.origin.startsWith('http'))
       ? window.location.origin : 'http://127.0.0.1:8000';
     const USE_LIVE_API = false;
-    const GREETING = "ආයුබෝවන් ABC ආයතනයෙන් මම කෙයාරා කෙසෙද මා ඔබට සහය වන්නේ.";
-    const FOLLOW_UP = "ඔබට තවත් දෙයක් ගැනිමට හෝ මගෙන් වෙනත් උපකාරයක් අවශදද?";
-    const YES_PROMPT = "ඔව් මොකක්ද ඔබට මගෙන් අවශ්‍ය උපකාරය.";
-    const GOODBYE = "ඔබට අවශ්‍ය උපකාරය ලබා දීමට මට සතුටුයි. ඔබට සුභ දවසක්.";
-    const RATE_MSG = "Service එක rate කරන්න කියලා කාරුනිකව ඉල්ලා සිටිනවා.";
     const CAPTURE_SECONDS = 10;
 
     let sessionId = null;
+    let phrases = {};
     let isConnected = false;
     let recognition = null;
     let captureTimeout = null;
@@ -107,9 +103,24 @@
           audio.play();
         });
       } catch (e) {
-        setStatus('TTS: ' + e.message, 'error');
+        const msg = (e.message === 'Failed to fetch') ? 'Server unreachable. Is the backend running?' : e.message;
+        setStatus('TTS: ' + msg, 'error');
         throw e;
       }
+    }
+
+    function speakText(text) {
+      return new Promise((resolve, reject) => {
+        if (!text || !window.speechSynthesis) {
+          resolve();
+          return;
+        }
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'si-LK';
+        u.onend = () => resolve();
+        u.onerror = (e) => reject(e);
+        window.speechSynthesis.speak(u);
+      });
     }
 
     async function postToLlm(message) {
@@ -123,22 +134,17 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: msg, session_id: sessionId })
         });
-        const ct = res.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-          const data = await res.json();
-          if (data.text) appendTranscript('Assistant', data.text);
-          throw new Error(data.error || 'TTS not configured');
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        if (data.text) {
+          appendTranscript('Assistant', data.text);
+          setStatus('Speaking...', 'playing');
+          await speakText(data.text);
         }
-        const blob = await res.blob();
-        const audio = new Audio(URL.createObjectURL(blob));
-        await new Promise((resolve, reject) => {
-          audio.onended = () => { URL.revokeObjectURL(audio.src); resolve(); };
-          audio.onerror = reject;
-          audio.play();
-        });
       } catch (e) {
         console.error('LLM error:', e);
-        setStatus('Error: ' + e.message, 'error');
+        const msg = (e.message === 'Failed to fetch') ? 'Server unreachable. Is the backend running?' : e.message;
+        setStatus('LLM: ' + msg, 'error');
       }
     }
 
@@ -227,15 +233,15 @@
       appendTranscript('You', captured || '(no input)');
       // Always pass to LLM - even when nothing captured (empty string)
       await postToLlm(captured === undefined ? '' : captured);
-      await playTts(FOLLOW_UP);
+      await playTts(phrases.follow_up);
       const response = await captureVoice();
       appendTranscript('You', response || '(no input)');
       if (isYes(response)) {
-        await playTts(YES_PROMPT);
+        await playTts(phrases.yes_prompt);
         return mainLoop();
       } else {
-        await playTts(GOODBYE);
-        await playTts(RATE_MSG);
+        await playTts(phrases.goodbye);
+        await playTts(phrases.rate_msg);
         setStatus('Conversation ended.', 'connected');
         return;
       }
@@ -244,12 +250,16 @@
     async function connect() {
       try {
         setStatus('Connecting...', '');
-        const res = await fetch(API_BASE + '/live/session-id');
-        const data = await res.json();
-        sessionId = data.session_id;
+        const [sessionRes, phrasesRes] = await Promise.all([
+          fetch(API_BASE + '/live/session-id'),
+          fetch(API_BASE + '/phrases')
+        ]);
+        const sessionData = await sessionRes.json();
+        phrases = await phrasesRes.json();
+        sessionId = sessionData.session_id;
         feedbackLink.href = '/static/feedback.html?session_id=' + encodeURIComponent(sessionId);
 
-        await playTts(GREETING);
+        await playTts(phrases.greeting);
 
         isConnected = true;
         setStatus('Connected. Mic open. Capturing...', 'connected');
@@ -258,7 +268,8 @@
 
         mainLoop();
       } catch (err) {
-        setStatus('Error: ' + err.message, 'error');
+        const msg = (err.message === 'Failed to fetch') ? 'Server unreachable. Is the backend running?' : err.message;
+        setStatus('Error: ' + msg, 'error');
       }
     }
 

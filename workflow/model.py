@@ -96,7 +96,7 @@ Example:
         with torch.no_grad():
             outputs = self.llm.model.generate(
                 **inputs,
-                max_new_tokens=80,
+                max_new_tokens=50,
                 do_sample=False,
                 eos_token_id=self.llm.tokenizer.eos_token_id
             )
@@ -118,11 +118,27 @@ Example:
 model_handler=modeloutput()
 
 GREETING = "ආයුබෝවන් ABC ආයතනයෙන් මම කෙයාරා කෙසෙද මා ඔබට සහය වන්නේ."
+FOLLOW_UP = "ඔබට තවත් දෙයක් ගැනිමට හෝ මගෙන් වෙනත් උපකාරයක් අවශදද?"
+YES_PROMPT = "ඔව් මොකක්ද ඔබට මගෙන් අවශ්‍ය උපකාරය."
+GOODBYE = "ඔබට අවශ්‍ය උපකාරය ලබා දීමට මට සතුටුයි. ඔබට සුභ දවසක්."
+RATE_MSG = "Service එක rate කරන්න කියලා කාරුනිකව ඉල්ලා සිටිනවා."
+
+
+@workflow.get("/phrases")
+async def get_phrases():
+    
+    return {
+        "greeting": GREETING,
+        "follow_up": FOLLOW_UP,
+        "yes_prompt": YES_PROMPT,
+        "goodbye": GOODBYE,
+        "rate_msg": RATE_MSG,
+    }
 
 
 @workflow.post("/tts")
 async def tts_route(request: TtsRequest):
-    """Convert text to speech (for greeting etc). Uses sinhala-call-center-agent-8031ac1e97ce.json for Google Cloud TTS."""
+    
     try:
         if USE_GOOGLE_TTS:
             from tts.google_tts import text_to_speech
@@ -140,16 +156,8 @@ async def tts_route(request: TtsRequest):
         return {"error": str(e)}
 
 
-@workflow.get("/greeting")
-async def get_greeting():
-    """Return greeting text for reference."""
-    return {"text": GREETING}
-
-
 @workflow.post("/llm")
 async def llm_model(request: LlmRequest):
-    """Finetuned LLM: message -> text -> TTS -> audio. Saves ai_response to session + customer_feedback.
-    Always processes - even when message is empty (nothing captured)."""
     msg = (request.message or "").strip()
     print(f"[LLM API] POST /llm received: message={repr(msg[:100])}{'...' if len(msg) > 100 else ''}, session_id={request.session_id}")
     llm_text = model_handler.generate_reponse(msg)
@@ -166,21 +174,8 @@ async def llm_model(request: LlmRequest):
         except Exception:
             pass
 
-    if not USE_GOOGLE_TTS and not TTS_API:
-        return {"error": "TTS not configured. Add sinhala-call-center-agent-8031ac1e97ce.json or set TTS_API_URL.", "text": llm_text}
-    try:
-        if USE_GOOGLE_TTS:
-            from tts.google_tts import text_to_speech
-            loop = asyncio.get_event_loop()
-            audio = await loop.run_in_executor(None, lambda: text_to_speech(llm_text))
-        else:
-            async with httpx.AsyncClient() as client:
-                tts_response = await client.post(TTS_API, json={"text": llm_text}, timeout=60.0)
-                tts_response.raise_for_status()
-                audio = tts_response.content
-        return StreamingResponse(io.BytesIO(audio), media_type="audio/mpeg")
-    except Exception as e:
-        return {"error": str(e), "text": llm_text}
+    # Return text only - frontend uses Speech Synthesis to speak it
+    return {"text": llm_text}
 
     
     

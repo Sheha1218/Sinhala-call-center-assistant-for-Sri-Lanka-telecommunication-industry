@@ -1,15 +1,10 @@
-"""
-In-memory store for AI responses per session.
-Used to link conversation AI responses with feedback when user submits rating.
-"""
 from typing import Dict, List
 
-# session_id -> list of AI response texts (in order)
+
 _ai_response_store: Dict[str, List[str]] = {}
 
 
 def save_ai_response(session_id: str, ai_response: str) -> None:
-    """Save an AI-generated response for a session."""
     if session_id not in _ai_response_store:
         _ai_response_store[session_id] = []
     if ai_response and ai_response.strip():

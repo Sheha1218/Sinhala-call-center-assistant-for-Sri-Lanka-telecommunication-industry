@@ -1,8 +1,3 @@
-"""
-Google Live API WebSocket server for Sinhala call center voice assistant.
-Handles voice capture (STT), model responses, TTS via Gemini Live API.
-Saves AI responses to session store for feedback linking.
-"""
 import asyncio
 import base64
 import json
@@ -58,11 +53,6 @@ async def websocket_live(
     user_id: str,
     session_id: str,
 ) -> None:
-    """
-    WebSocket endpoint for bidirectional voice streaming.
-    Voice capture (STT) and TTS are handled by Gemini Live API.
-    AI responses are saved to session store for feedback linking.
-    """
     await websocket.accept()
     logger.info(f"Live WebSocket connected: user_id={user_id}, session_id={session_id}")
 
