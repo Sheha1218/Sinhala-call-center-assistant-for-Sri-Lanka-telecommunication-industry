@@ -1,3 +1,5 @@
 # Google Cloud Text-to-Speech for Sinhala TTS
 # Uses sinhala-call-center-agent-8031ac1e97ce.json
 google-cloud-texttospeech>=2.14.0
+# Google Cloud Speech-to-Text for Sinhala STT (same credentials)
+google-cloud-speech>=2.25.0

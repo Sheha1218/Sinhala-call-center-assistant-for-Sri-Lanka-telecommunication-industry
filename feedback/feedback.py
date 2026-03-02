@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, text
 import os
 from dotenv import load_dotenv
 
-from .session_store import get_last_ai_response, clear_session
+from .session_store import get_last_ai_response, get_customer_messages_combined, clear_session
 
 load_dotenv()
 
@@ -36,18 +36,44 @@ class FeedbackResponse(BaseModel):
     feedback_id: int | None = None
 
 
-def save_ai_response_to_db(ai_response: str, session_id: str | None = None) -> int | None:
-    """Save ai_response to customer_feedback table (call_agent DB). Returns feedback_id."""
+def register_session(session_id: str) -> None:
+    """Create new session record in call_sessions when Connect button is pressed."""
+    ensure_call_sessions_table()
+    try:
+        with engine.connect() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO call_sessions (session_id)
+                    VALUES (:session_id)
+                    ON CONFLICT (session_id) DO NOTHING;
+                """),
+                {"session_id": session_id}
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"Error registering session: {e}")
+
+
+def save_ai_response_to_db(
+    ai_response: str,
+    session_id: str | None = None,
+    customer_message: str | None = None,
+) -> int | None:
+    """Save ai_response and optionally customer_message to customer_feedback table. Returns feedback_id."""
     ensure_feedback_table()
     try:
         with engine.connect() as conn:
             result = conn.execute(
                 text("""
-                    INSERT INTO customer_feedback (ai_response)
-                    VALUES (:ai_response)
+                    INSERT INTO customer_feedback (ai_response, customer_message, session_id)
+                    VALUES (:ai_response, :customer_message, :session_id)
                     RETURNING feedback_id;
                 """),
-                {"ai_response": ai_response}
+                {
+                    "ai_response": ai_response,
+                    "customer_message": customer_message or None,
+                    "session_id": session_id or None,
+                }
             )
             conn.commit()
             return result.fetchone()[0]
@@ -56,8 +82,23 @@ def save_ai_response_to_db(ai_response: str, session_id: str | None = None) -> i
         return None
 
 
+def ensure_call_sessions_table():
+    """Create call_sessions table to store session_id when Connect is pressed."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS call_sessions (
+                    session_id VARCHAR(64) PRIMARY KEY,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            conn.commit()
+    except Exception as e:
+        print(f"Error creating call_sessions table: {str(e)}")
+
+
 def ensure_feedback_table():
-    """Create feedback table with feedback_value, feedback_message, and ai_response columns if it doesn't exist"""
+    """Create feedback table with feedback_value, feedback_message, ai_response, customer_message, session_id."""
     try:
         with engine.connect() as conn:
             create_table_query = """
@@ -68,22 +109,29 @@ def ensure_feedback_table():
                 feedback_value INTEGER CHECK (feedback_value >= 0 AND feedback_value <= 10),
                 feedback_message TEXT,
                 ai_response TEXT,
+                customer_message TEXT,
+                session_id VARCHAR(64),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """
             conn.execute(text(create_table_query))
             conn.commit()
-            # Add ai_response column if table already existed without it (PostgreSQL)
-            try:
-                check_col = conn.execute(text("""
-                    SELECT column_name FROM information_schema.columns 
-                    WHERE table_name='customer_feedback' AND column_name='ai_response';
-                """)).fetchone()
-                if not check_col:
-                    conn.execute(text("ALTER TABLE customer_feedback ADD COLUMN ai_response TEXT;"))
-                    conn.commit()
-            except Exception:
-                pass
+            # Add columns if table already existed (PostgreSQL)
+            for col, col_type in [
+                ("ai_response", "TEXT"),
+                ("customer_message", "TEXT"),
+                ("session_id", "VARCHAR(64)"),
+            ]:
+                try:
+                    check = conn.execute(text("""
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_name='customer_feedback' AND column_name=:col
+                    """), {"col": col}).fetchone()
+                    if not check:
+                        conn.execute(text(f"ALTER TABLE customer_feedback ADD COLUMN {col} {col_type}"))
+                        conn.commit()
+                except Exception:
+                    pass
     except Exception as e:
         print(f"Error creating table: {str(e)}")
 
@@ -129,14 +177,16 @@ async def submit_feedback_value(request: FeedbackValueRequest):
 async def submit_feedback_full(request: FeedbackFullRequest):
     ensure_feedback_table()
     ai_response = ""
+    customer_message = ""
     if request.session_id:
         ai_response = get_last_ai_response(request.session_id)
+        customer_message = get_customer_messages_combined(request.session_id)
         clear_session(request.session_id)
     try:
         with engine.connect() as conn:
             insert_query = """
-            INSERT INTO customer_feedback (feedback_value, feedback_message, ai_response)
-            VALUES (:feedback_value, :feedback_message, :ai_response)
+            INSERT INTO customer_feedback (feedback_value, feedback_message, ai_response, customer_message, session_id)
+            VALUES (:feedback_value, :feedback_message, :ai_response, :customer_message, :session_id)
             RETURNING feedback_id;
             """
             result = conn.execute(
@@ -145,6 +195,8 @@ async def submit_feedback_full(request: FeedbackFullRequest):
                     "feedback_value": request.feedback_value,
                     "feedback_message": request.feedback_message,
                     "ai_response": ai_response or None,
+                    "customer_message": customer_message or None,
+                    "session_id": request.session_id or None,
                 }
             )
             conn.commit()

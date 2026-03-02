@@ -54,14 +54,12 @@
     // API base - use same origin when served from server; fallback for file:// open
     const API_BASE = (window.location.origin && window.location.origin.startsWith('http'))
       ? window.location.origin : 'http://127.0.0.1:8000';
-    const USE_LIVE_API = false;
+    const USE_LIVE_API = false;  // Voice capture now always goes via backend (STT+LLM)
     const CAPTURE_SECONDS = 10;
 
     let sessionId = null;
     let phrases = {};
     let isConnected = false;
-    let recognition = null;
-    let captureTimeout = null;
 
     const statusEl = document.getElementById('status');
     const btnConnect = document.getElementById('btnConnect');
@@ -123,100 +121,78 @@
       });
     }
 
-    async function postToLlm(message) {
+    async function captureVoiceAsPcm() {
+      return new Promise((resolve) => {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+          const src = ctx.createMediaStreamSource(stream);
+          const proc = ctx.createScriptProcessor(4096, 1, 1);
+          const chunks = [];
+          proc.onaudioprocess = (e) => {
+            const d = e.inputBuffer.getChannelData(0);
+            const pcm = new Int16Array(d.length);
+            for (let i = 0; i < d.length; i++) pcm[i] = Math.max(-32768, Math.min(32767, d[i] * 32768));
+            chunks.push(pcm);
+          };
+          proc.connect(ctx.destination);
+          src.connect(proc);
+          setStatus('Listening... (' + CAPTURE_SECONDS + ' sec)', 'listening');
+          setTimeout(() => {
+            proc.disconnect();
+            stream.getTracks().forEach(t => t.stop());
+            const totalLen = chunks.reduce((a, c) => a + c.length, 0);
+            const merged = new Int16Array(totalLen);
+            let offset = 0;
+            for (const c of chunks) {
+              merged.set(c, offset);
+              offset += c.length;
+            }
+            resolve({ buffer: merged.buffer, sampleRate: ctx.sampleRate });
+          }, CAPTURE_SECONDS * 1000);
+        }).catch(() => resolve({ buffer: new ArrayBuffer(0), sampleRate: 16000 }));
+      });
+    }
+
+    async function postVoiceToLlm(audioData) {
       setStatus('LLM processing...', 'playing');
       try {
-        const msg = (message === undefined || message === null) ? '' : String(message).trim();
-        const url = API_BASE + '/llm';
-        console.log('[API] POST', url, { message: msg, session_id: sessionId });
-        const res = await fetch(url, {
+        const { buffer, sampleRate } = typeof audioData === 'object' && audioData.buffer ? audioData : { buffer: audioData, sampleRate: 16000 };
+        const formData = new FormData();
+        formData.append('audio', new Blob([buffer], { type: 'audio/l16' }), 'audio.pcm');
+        formData.append('sample_rate', String(sampleRate));
+        if (sessionId) formData.append('session_id', sessionId);
+        console.log('[API] POST', API_BASE + '/voice-to-llm', { session_id: sessionId });
+        const res = await fetch(API_BASE + '/voice-to-llm', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg, session_id: sessionId })
+          body: formData
         });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
+        if (data.transcript) appendTranscript('You', data.transcript || '(no input)');
         if (data.text) {
           appendTranscript('Assistant', data.text);
           setStatus('Speaking...', 'playing');
           await speakText(data.text);
         }
       } catch (e) {
-        console.error('LLM error:', e);
+        console.error('Voice-to-LLM error:', e);
         const msg = (e.message === 'Failed to fetch') ? 'Server unreachable. Is the backend running?' : e.message;
         setStatus('LLM: ' + msg, 'error');
       }
     }
 
-    async function captureVoiceLiveApi() {
-      const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = wsProto + '//' + location.host + '/live/ws/user-' + Date.now() + '/' + (sessionId || 'capture');
-      const ws = new WebSocket(wsUrl);
-      const transcriptions = [];
-      return new Promise((resolve) => {
-        ws.onopen = () => {
-          setStatus('Listening via Live API... (' + CAPTURE_SECONDS + ' sec)', 'listening');
-          navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-            const src = ctx.createMediaStreamSource(stream);
-            const proc = ctx.createScriptProcessor(4096, 1, 1);
-            src.connect(proc);
-            proc.connect(ctx.destination);
-            proc.onaudioprocess = (e) => {
-              if (ws.readyState !== 1) return;
-              const d = e.inputBuffer.getChannelData(0);
-              const pcm = new Int16Array(d.length);
-              for (let i = 0; i < d.length; i++) pcm[i] = Math.max(-32768, Math.min(32767, d[i] * 32768));
-              ws.send(pcm.buffer);
-            };
-            setTimeout(() => {
-              proc.disconnect();
-              stream.getTracks().forEach(t => t.stop());
-              ws.close();
-            }, CAPTURE_SECONDS * 1000);
-          }).catch(() => resolve(''));
-        };
-        ws.onmessage = (e) => {
-          try {
-            const ev = JSON.parse(e.data);
-            const t = ev.input_transcription?.text || ev.inputTranscription?.text;
-            if (t) transcriptions.push(t);
-          } catch (_) {}
-        };
-        ws.onclose = () => resolve(transcriptions.join(' ').trim());
-      });
-    }
-
-    function captureVoice() {
-      if (USE_LIVE_API) return captureVoiceLiveApi();
-      return new Promise((resolve) => {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-          resolve('');
-          return;
-        }
-        const rec = new SpeechRecognition();
-        rec.continuous = true;
-        rec.interimResults = true;
-        rec.lang = 'si-LK';
-        let finalText = '';
-        let interimText = '';
-        rec.onresult = (e) => {
-          for (let i = e.resultIndex; i < e.results.length; i++) {
-            const t = e.results[i][0].transcript;
-            if (e.results[i].isFinal) finalText += t;
-            else interimText = t;
-          }
-        };
-        rec.onend = () => {
-          clearTimeout(captureTimeout);
-          resolve((finalText + interimText).trim());
-        };
-        rec.onerror = () => resolve(finalText || interimText);
-        setStatus('Listening... (' + CAPTURE_SECONDS + ' sec)', 'listening');
-        rec.start();
-        captureTimeout = setTimeout(() => rec.stop(), CAPTURE_SECONDS * 1000);
-      });
+    async function postVoiceToText(audioData) {
+      try {
+        const { buffer, sampleRate } = typeof audioData === 'object' && audioData.buffer ? audioData : { buffer: audioData, sampleRate: 16000 };
+        const formData = new FormData();
+        formData.append('audio', new Blob([buffer], { type: 'audio/l16' }), 'audio.pcm');
+        formData.append('sample_rate', String(sampleRate));
+        const res = await fetch(API_BASE + '/voice-to-text', { method: 'POST', body: formData });
+        const data = await res.json();
+        return (data.transcript || '').trim();
+      } catch (e) {
+        return '';
+      }
     }
 
     function isYes(text) {
@@ -229,12 +205,11 @@
     }
 
     async function mainLoop() {
-      const captured = await captureVoice();
-      appendTranscript('You', captured || '(no input)');
-      // Always pass to LLM - even when nothing captured (empty string)
-      await postToLlm(captured === undefined ? '' : captured);
+      const audioData = await captureVoiceAsPcm();
+      await postVoiceToLlm(audioData);
       await playTts(phrases.follow_up);
-      const response = await captureVoice();
+      const responseAudio = await captureVoiceAsPcm();
+      const response = await postVoiceToText(responseAudio);
       appendTranscript('You', response || '(no input)');
       if (isYes(response)) {
         await playTts(phrases.yes_prompt);
@@ -276,8 +251,6 @@
     function disconnect() {
       isConnected = false;
       sessionId = null;
-      if (captureTimeout) clearTimeout(captureTimeout);
-      if (recognition) recognition.stop();
       setStatus('Disconnected. Click Connect to start.', '');
       btnConnect.disabled = false;
       btnDisconnect.disabled = true;

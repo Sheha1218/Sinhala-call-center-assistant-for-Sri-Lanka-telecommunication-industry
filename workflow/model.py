@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, File, Form, UploadFile
 import asyncio
 import os
 import torch
@@ -164,18 +164,107 @@ async def llm_model(request: LlmRequest):
 
     if request.session_id:
         try:
-            from feedback.session_store import save_ai_response
+            from feedback.session_store import save_ai_response, save_customer_message
+            save_customer_message(request.session_id, msg)
             save_ai_response(request.session_id, llm_text)
         except Exception:
             pass
         try:
             from feedback.feedback import save_ai_response_to_db
-            save_ai_response_to_db(llm_text, request.session_id)
+            save_ai_response_to_db(llm_text, request.session_id, msg)
         except Exception:
             pass
 
     # Return text only - frontend uses Speech Synthesis to speak it
     return {"text": llm_text}
 
-    
-    
+
+def _resample_to_16k(audio_bytes: bytes, from_rate: int) -> bytes:
+    """Resample 16-bit PCM from from_rate to 16000 Hz."""
+    if from_rate == 16000:
+        return audio_bytes
+    import numpy as np
+    arr = np.frombuffer(audio_bytes, dtype=np.int16)
+    n = len(arr)
+    new_n = int(n * 16000 / from_rate)
+    indices = np.linspace(0, n - 1, new_n).astype(np.int32)
+    resampled = arr[indices]
+    return resampled.tobytes()
+
+
+@workflow.post("/voice-to-llm")
+async def voice_to_llm(
+    audio: UploadFile = File(...),
+    session_id: str = Form(None),
+    sample_rate: str = Form("16000"),
+):
+    """
+    Receive raw audio (PCM 16-bit mono), run STT on backend, then LLM.
+    Frontend sends captured audio; backend does STT + LLM.
+    """
+    try:
+        audio_bytes = await audio.read()
+    except Exception as e:
+        return {"error": f"Failed to read audio: {e}", "text": "", "transcript": ""}
+
+    sr = int(sample_rate) if sample_rate else 16000
+    if sr != 16000:
+        audio_bytes = _resample_to_16k(audio_bytes, sr)
+
+    if not audio_bytes:
+        transcript = ""
+    else:
+        try:
+            from stt.google_stt import speech_to_text
+            loop = asyncio.get_event_loop()
+            transcript = await loop.run_in_executor(
+                None, lambda: speech_to_text(audio_bytes, sample_rate=16000)
+            )
+        except Exception as e:
+            return {"error": f"STT failed: {e}", "text": "", "transcript": ""}
+
+    print(f"[Voice-to-LLM] transcript={repr(transcript[:100])}{'...' if len(transcript) > 100 else ''}, session_id={session_id}")
+
+    llm_text = model_handler.generate_reponse(transcript or "")
+
+    if session_id:
+        try:
+            from feedback.session_store import save_ai_response, save_customer_message
+            save_customer_message(session_id, transcript or "")
+            save_ai_response(session_id, llm_text)
+        except Exception:
+            pass
+        try:
+            from feedback.feedback import save_ai_response_to_db
+            save_ai_response_to_db(llm_text, session_id, transcript or None)
+        except Exception:
+            pass
+
+    return {"text": llm_text, "transcript": transcript}
+
+
+@workflow.post("/voice-to-text")
+async def voice_to_text(
+    audio: UploadFile = File(...),
+    sample_rate: str = Form("16000"),
+):
+    """STT only - returns transcript. Used for yes/no follow-up."""
+    try:
+        audio_bytes = await audio.read()
+    except Exception as e:
+        return {"error": str(e), "transcript": ""}
+    sr = int(sample_rate) if sample_rate else 16000
+    if sr != 16000:
+        audio_bytes = _resample_to_16k(audio_bytes, sr)
+    if not audio_bytes:
+        return {"transcript": ""}
+    try:
+        from stt.google_stt import speech_to_text
+        loop = asyncio.get_event_loop()
+        transcript = await loop.run_in_executor(
+            None, lambda: speech_to_text(audio_bytes, sample_rate=16000)
+        )
+        return {"transcript": transcript}
+    except Exception as e:
+        return {"error": str(e), "transcript": ""}
+

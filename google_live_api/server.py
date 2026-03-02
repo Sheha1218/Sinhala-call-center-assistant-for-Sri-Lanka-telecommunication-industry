@@ -132,5 +132,11 @@ async def websocket_live(
 
 @live_router.get("/session-id")
 async def get_session_id():
-    """Generate a new session ID for voice conversation (used by feedback linking)."""
-    return {"session_id": str(uuid.uuid4())}
+    """Generate a new session ID for voice conversation and store in DB (Connect button)."""
+    session_id = str(uuid.uuid4())
+    try:
+        from feedback.feedback import register_session
+        register_session(session_id)
+    except Exception as e:
+        logger.warning(f"Could not register session in DB: {e}")
+    return {"session_id": session_id}
