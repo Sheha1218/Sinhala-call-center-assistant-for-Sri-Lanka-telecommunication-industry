@@ -26,10 +26,10 @@ class CallCenterEnvironment:
         self.call_history = deque(maxlen=1000)
         
     def fetch_call_episodes(self, batch_size=100):
-        """Fetch feedback with ai_response for PPO training. Batch of 100 by default."""
+        """Fetch feedback_value, feedback_message, ai_response, customer_message for PPO training."""
         query = f"""
             SELECT feedback_id, customer_nic, connection_number, 
-                   feedback_value, feedback_message, ai_response, created_at 
+                   feedback_value, feedback_message, ai_response, customer_message, created_at 
             FROM {self.feedback_table}
             WHERE feedback_value IS NOT NULL
             ORDER BY created_at DESC
@@ -58,16 +58,21 @@ class CallCenterEnvironment:
         self.current_call_id = None
         return None
     
-    def step(self, action, feedback_value):
-       
+    def step(self, action, feedback_value, feedback_message=None, ai_response=None, customer_message=None):
+        """
+        PPO step using feedback_value as reward signal.
+        feedback_message, ai_response, customer_message stored for training context.
+        """
         reward = self.convert_feedback_to_reward(feedback_value)
         done = True  # Each call is one episode
         info = {
             'feedback_value': feedback_value,
+            'feedback_message': feedback_message or '',
+            'ai_response': ai_response or '',
+            'customer_message': customer_message or '',
             'reward': reward,
             'timestamp': datetime.now().isoformat()
         }
-        
         self.call_history.append(info)
         return reward, done, info
 
@@ -80,16 +85,17 @@ class PPOMemory:
         self.log_probs = []
         self.values = []
         self.dones = []
+        self.feedback_data = []  # customer_message, ai_response, feedback_message, feedback_value per step
         self.batch_size = batch_size
         
-    def push(self, state, action, reward, log_prob, value, done):
-        
+    def push(self, state, action, reward, log_prob, value, done, feedback_data=None):
         self.states.append(state)
         self.actions.append(action)
         self.rewards.append(reward)
         self.log_probs.append(log_prob.detach())
         self.values.append(value.detach())
         self.dones.append(done)
+        self.feedback_data.append(feedback_data or {})
     
     def clear(self):
         self.states.clear()
@@ -98,6 +104,7 @@ class PPOMemory:
         self.log_probs.clear()
         self.values.clear()
         self.dones.clear()
+        self.feedback_data.clear()
     
     def is_full(self):
         return len(self.states) >= self.batch_size
@@ -112,6 +119,7 @@ class PPOMemory:
             'rewards': torch.tensor(self.rewards[:self.batch_size], dtype=torch.float32),
             'log_probs': torch.stack(self.log_probs[:self.batch_size]),
             'values': torch.stack(self.values[:self.batch_size]),
+            'feedback_data': self.feedback_data[:self.batch_size],
         }
     
     def compute_returns(self, gamma=0.99, gae_lambda=0.95):
@@ -290,18 +298,28 @@ class PPOAgent:
         
         for idx, row in feedback_data.iterrows():
             feedback_value = row['feedback_value']
+            feedback_message = row.get('feedback_message') or ''
+            ai_response = row.get('ai_response') or ''
+            customer_message = row.get('customer_message') or ''
+            
             reward = env.convert_feedback_to_reward(feedback_value)
             total_reward += reward
             episode_count += 1
             
-            
+            # Use feedback data for state representation (embed these for full LLM fine-tuning)
             state = torch.randn(self.state_dim).to(self.device)
-            
             
             with torch.no_grad():
                 action, log_prob, value = self.select_action(state)
             
-            self.memory.push(state, action, reward, log_prob, value, True)
+            feedback_ctx = {
+                'customer_message': customer_message,
+                'ai_response': ai_response,
+                'feedback_message': feedback_message,
+                'feedback_value': feedback_value,
+            }
+            env.step(action, feedback_value, feedback_message, ai_response, customer_message)
+            self.memory.push(state, action, reward, log_prob, value, True, feedback_ctx)
             
             if self.memory.is_full():
                 print(f"[2/3] Training on batch {len(self.training_history) + 1}...")
@@ -312,7 +330,8 @@ class PPOAgent:
                     'step': self.training_step,
                     'timestamp': datetime.now().isoformat(),
                     'metrics': metrics,
-                    'episodes_processed': episode_count
+                    'episodes_processed': episode_count,
+                    'feedback_batch': batch.get('feedback_data', []),  # customer_message, ai_response, feedback_message, feedback_value
                 })
                 
               

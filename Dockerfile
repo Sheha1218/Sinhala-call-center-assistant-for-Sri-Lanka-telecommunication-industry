@@ -1,22 +1,17 @@
-# Sinhala Call Center Assistant - Sri Lanka Telecommunication
-FROM python:3.11-slim
+# Sinhala Call Center Assistant - Sri Lanka Telecommunication (lightweight)
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
-# Install system deps (minimal for Python packages)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Install PyTorch CPU-only first (~200MB vs ~2.5GB for full CUDA build)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
-# Copy requirements first for better layer caching
+# Copy requirements and install (torch excluded - installed above)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
 
-# Expose FastAPI default port
 EXPOSE 8000
-
-# Run with uvicorn (host 0.0.0.0 for container access)
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

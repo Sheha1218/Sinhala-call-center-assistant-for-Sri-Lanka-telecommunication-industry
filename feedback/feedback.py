@@ -99,6 +99,7 @@ def ensure_call_sessions_table():
 
 def ensure_feedback_table():
     """Create feedback table with feedback_value, feedback_message, ai_response, customer_message, session_id."""
+    ensure_call_sessions_table()  # Ensure parent table exists before FK reference
     try:
         with engine.connect() as conn:
             create_table_query = """
@@ -110,7 +111,7 @@ def ensure_feedback_table():
                 feedback_message TEXT,
                 ai_response TEXT,
                 customer_message TEXT,
-                session_id VARCHAR(64),
+                session_id VARCHAR(64) REFERENCES call_sessions(session_id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """
@@ -132,6 +133,21 @@ def ensure_feedback_table():
                         conn.commit()
                 except Exception:
                     pass
+            # Add FK constraint on session_id if missing (migration for existing tables)
+            try:
+                fk_check = conn.execute(text("""
+                    SELECT 1 FROM information_schema.table_constraints
+                    WHERE table_name='customer_feedback' AND constraint_name='fk_customer_feedback_session'
+                """)).fetchone()
+                if not fk_check:
+                    conn.execute(text("""
+                        ALTER TABLE customer_feedback
+                        ADD CONSTRAINT fk_customer_feedback_session
+                        FOREIGN KEY (session_id) REFERENCES call_sessions(session_id)
+                    """))
+                    conn.commit()
+            except Exception:
+                pass
     except Exception as e:
         print(f"Error creating table: {str(e)}")
 

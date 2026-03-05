@@ -56,9 +56,10 @@ class FeedbackOptimizer:
                 json.dump(config, f, indent=4)
     
     def fetch_feedback_data(self):
+        """Fetch feedback_value, feedback_message, ai_response, customer_message for PPO training."""
         query = f"""
             SELECT feedback_id, customer_nic, connection_number, 
-                   feedback_value, feedback_message, ai_response, created_at 
+                   feedback_value, feedback_message, ai_response, customer_message, created_at 
             FROM {self.feedback_table}
             WHERE feedback_value IS NOT NULL
             ORDER BY created_at DESC;
@@ -86,6 +87,10 @@ class FeedbackOptimizer:
             'positive_feedback_count': len(feedback_df[feedback_df['feedback_value'] >= 9]) if 'feedback_value' in feedback_df.columns else 0,
             'neutral_feedback_count': len(feedback_df[(feedback_df['feedback_value'] >= 7) & (feedback_df['feedback_value'] <= 8)]) if 'feedback_value' in feedback_df.columns else 0,
             'negative_feedback_count': len(feedback_df[feedback_df['feedback_value'] <= 6]) if 'feedback_value' in feedback_df.columns else 0,
+            # PPO training data quality: records with customer_message, ai_response, feedback_message
+            'with_customer_message': (feedback_df['customer_message'].fillna('').str.len() > 0).sum() if 'customer_message' in feedback_df.columns else 0,
+            'with_ai_response': (feedback_df['ai_response'].fillna('').str.len() > 0).sum() if 'ai_response' in feedback_df.columns else 0,
+            'with_feedback_message': (feedback_df['feedback_message'].fillna('').str.len() > 0).sum() if 'feedback_message' in feedback_df.columns else 0,
         }
         
         return metrics
