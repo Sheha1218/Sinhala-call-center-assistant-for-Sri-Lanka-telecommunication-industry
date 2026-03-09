@@ -8,39 +8,51 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import httpx
 import io
+import logging
 from dotenv import load_dotenv
 from .first import models
 
 load_dotenv()
 
-
-_telecom_knowledge_df = None
+logger = logging.getLogger(__name__)
 
 
 def get_telecom_knowledge(query: str = "") -> str:
-    
-    global _telecom_knowledge_df
-    data_path = Path(__file__).parent.parent / "data.csv"
-    if not data_path.exists():
-        return "Telecom knowledge base not found. Use general Sri Lankan telecom guidelines."
     try:
-        if _telecom_knowledge_df is None:
-            _telecom_knowledge_df = pd.read_csv(data_path)
-        df = _telecom_knowledge_df
-      
-        proc_col = "process" if "process" in df.columns else df.columns[-1]
-        svc_col = df.columns[0]
-        if query and query.strip():
-            q = query.strip().lower()
-            mask = df.astype(str).apply(
-                lambda r: q in " ".join(r.values).lower(),
-                axis=1,
+        knowledge_prompt = f"""<s>### Instruction:
+You are a Sri Lankan telecom expert. Provide brief, relevant telecom knowledge to assist customer support.
+Only provide telecom-related information (SIM change, payment, connections, plans, troubleshooting, etc).
+
+### Customer Query:
+{query if query.strip() else "General telecom knowledge for Sri Lanka"}
+
+### Telecom Knowledge:
+"""
+        
+        inputs = models().tokenizer(
+            knowledge_prompt,
+            return_tensors="pt"
+        ).to(models().model.device)
+        
+        with torch.no_grad():
+            outputs = models().model.generate(
+                **inputs,
+                max_new_tokens=100,
+                do_sample=False,
+                eos_token_id=models().tokenizer.eos_token_id
             )
-            df = df[mask] if mask.any() else df
-        processes = df.head(5)[proc_col].dropna().astype(str).tolist()
-        return "\n\n".join(processes) if processes else "No matching knowledge found."
+        
+        knowledge = models().tokenizer.decode(
+            outputs[0],
+            skip_special_tokens=True
+        )
+        
+        if "### Telecom Knowledge:" in knowledge:
+            knowledge = knowledge.split("### Telecom Knowledge:")[-1].strip()
+        
+        return knowledge if knowledge and len(knowledge.strip()) > 3 else "No knowledge available."
     except Exception as e:
-        return f"Error loading knowledge: {str(e)}"
+        return f"Error generating knowledge: {str(e)}"
 TTS_API = os.getenv('TTS_API_URL')
 TTS_CREDENTIALS = os.getenv(
     "GOOGLE_TTS_CREDENTIALS",
@@ -50,7 +62,13 @@ USE_GOOGLE_TTS = Path(TTS_CREDENTIALS).exists()
 
 workflow = APIRouter()
 
-llm_ins=models()
+try:
+    logger.info("Initializing LLM instance...")
+    llm_ins = models()
+    logger.info("LLM instance initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize LLM instance: {str(e)}", exc_info=True)
+    llm_ins = None
 
 class LlmRequest(BaseModel):
     message: str
@@ -86,34 +104,41 @@ Example:
 """
 
     def generate_reponse(self, message: str) -> str:
-        full_prompt = self.prompt + message + "\n\n### Assistant:\n"
+        try:
+            logger.info(f"LLM generation started - Input: {message[:100]}{'...' if len(message) > 100 else ''}")
+            full_prompt = self.prompt + message + "\n\n### Assistant:\n"
 
-        inputs = self.llm.tokenizer(
-            full_prompt,
-            return_tensors="pt"
-        ).to(self.llm.model.device)
-        
-        with torch.no_grad():
-            outputs = self.llm.model.generate(
-                **inputs,
-                max_new_tokens=50,
-                do_sample=False,
-                eos_token_id=self.llm.tokenizer.eos_token_id
+            inputs = self.llm.tokenizer(
+                full_prompt,
+                return_tensors="pt"
+            ).to(self.llm.model.device)
+            
+            with torch.no_grad():
+                outputs = self.llm.model.generate(
+                    **inputs,
+                    max_new_tokens=1,
+                    do_sample=False,
+                    eos_token_id=self.llm.tokenizer.eos_token_id
+                )
+
+            reply = self.llm.tokenizer.decode(
+                outputs[0],
+                skip_special_tokens=True
             )
 
-        reply = self.llm.tokenizer.decode(
-            outputs[0],
-            skip_special_tokens=True
-        )
+            if "### Assistant:" in reply:
+                reply = reply.split("### Assistant:")[-1].strip()
 
-        if "### Assistant:" in reply:
-            reply = reply.split("### Assistant:")[-1].strip()
-
-       
-        DONT_KNOW = "මොහොතක් රැදී සිටින්න"
-        if not reply or len(reply.strip()) < 3 or "නොදනි" in reply or "දන්නේ නැ" in reply:
-            return DONT_KNOW
-        return reply
+           
+            DONT_KNOW = "මොහොතක් රැදී සිටින්න"
+            if not reply or len(reply.strip()) < 3 or "නොදනි" in reply or "දන්නේ නැ" in reply:
+                logger.warning(f"LLM returned don't-know or invalid reply (length={len(reply) if reply else 0})")
+                return DONT_KNOW
+            logger.info(f"✓ AI message generation successful - Response: {reply[:100]}{'...' if len(reply) > 100 else ''}")
+            return reply
+        except Exception as e:
+            logger.error(f"✗ LLM generation error: {e}", exc_info=True)
+            return "මොහොතක් රැදී සිටින්න"
 
 model_handler=modeloutput()
 
@@ -159,8 +184,9 @@ async def tts_route(request: TtsRequest):
 @workflow.post("/llm")
 async def llm_model(request: LlmRequest):
     msg = (request.message or "").strip()
-    print(f"[LLM API] POST /llm received: message={repr(msg[:100])}{'...' if len(msg) > 100 else ''}, session_id={request.session_id}")
+    logger.info(f"LLM API request received - message={msg[:100]}{'...' if len(msg) > 100 else ''}, session_id={request.session_id}")
     llm_text = model_handler.generate_reponse(msg)
+    logger.info(f"LLM API response generated - text={llm_text[:100]}{'...' if len(llm_text) > 100 else ''}")
 
     if request.session_id:
         try:
@@ -175,12 +201,10 @@ async def llm_model(request: LlmRequest):
         except Exception:
             pass
 
-    # Return text only - frontend uses Speech Synthesis to speak it
     return {"text": llm_text}
 
 
 def _resample_to_16k(audio_bytes: bytes, from_rate: int) -> bytes:
-    """Resample 16-bit PCM from from_rate to 16000 Hz."""
     if from_rate == 16000:
         return audio_bytes
     import numpy as np
@@ -198,10 +222,7 @@ async def voice_to_llm(
     session_id: str = Form(None),
     sample_rate: str = Form("16000"),
 ):
-    """
-    Receive raw audio (PCM 16-bit mono), run STT on backend, then LLM.
-    Frontend sends captured audio; backend does STT + LLM.
-    """
+  
     try:
         audio_bytes = await audio.read()
     except Exception as e:
@@ -248,7 +269,6 @@ async def voice_to_text(
     audio: UploadFile = File(...),
     sample_rate: str = Form("16000"),
 ):
-    """STT only - returns transcript. Used for yes/no follow-up."""
     try:
         audio_bytes = await audio.read()
     except Exception as e:

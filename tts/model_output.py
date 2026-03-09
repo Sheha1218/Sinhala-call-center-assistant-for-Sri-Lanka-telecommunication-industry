@@ -23,7 +23,7 @@ async def tts(request: TTSRequest):
     
     synthesis_input = texttospeech.SynthesisInput(text=request.text)
 
-    # Sinhala female voice
+    
     voice = texttospeech.VoiceSelectionParams(
         language_code="si-LK",
         ssml_gender=texttospeech.SsmlVoiceGender.FEMALE

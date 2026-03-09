@@ -44,25 +44,15 @@ class CallCenterEnvironment:
             return pd.DataFrame()
     
     def convert_feedback_to_reward(self, feedback_value):
-        """
-        Map feedback_value (0-10) to reward for PPO.
-        0-6: bad -> reward in [-1, 0.2]
-        7-8: neutral -> reward in [0.4, 0.6]
-        9-10: good -> reward in [0.8, 1]
-        """
         normalized = (feedback_value / 10.0) * 2 - 1
         return normalized
     
     def reset(self):
-        """Reset environment state."""
+        
         self.current_call_id = None
         return None
     
     def step(self, action, feedback_value, feedback_message=None, ai_response=None, customer_message=None):
-        """
-        PPO step using feedback_value as reward signal.
-        feedback_message, ai_response, customer_message stored for training context.
-        """
         reward = self.convert_feedback_to_reward(feedback_value)
         done = True  # Each call is one episode
         info = {
@@ -238,27 +228,27 @@ class PPOAgent:
             action_logits, values = self.policy(states)
             values = values.squeeze(-1)
             
-            # Compute new log probabilities
+            
             action_probs = torch.nn.functional.softmax(action_logits, dim=-1)
             action_dist = torch.distributions.Categorical(action_probs)
             new_log_probs = action_dist.log_prob(actions)
             
-            # Compute policy loss (PPO objective)
+            
             ratio = torch.exp(new_log_probs - old_log_probs)
             surr1 = ratio * advantages
             surr2 = torch.clamp(ratio, 1 - self.clip_ratio, 1 + self.clip_ratio) * advantages
             policy_loss = -torch.min(surr1, surr2).mean()
             
-            # Compute value loss
+           
             value_loss = nn.functional.mse_loss(values, returns)
             
-            # Compute entropy bonus (for exploration)
+           
             entropy = action_dist.entropy().mean()
             
             # Total loss
             loss = policy_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy
             
-            # Backward pass
+            
             self.optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
@@ -287,7 +277,7 @@ class PPOAgent:
         total_reward = 0
         episode_count = 0
         
-        # Fetch feedback data
+        
         feedback_data = env.fetch_call_episodes(batch_size=num_episodes)
         
         if feedback_data.empty:
@@ -306,7 +296,7 @@ class PPOAgent:
             total_reward += reward
             episode_count += 1
             
-            # Use feedback data for state representation (embed these for full LLM fine-tuning)
+            
             state = torch.randn(self.state_dim).to(self.device)
             
             with torch.no_grad():
@@ -331,7 +321,7 @@ class PPOAgent:
                     'timestamp': datetime.now().isoformat(),
                     'metrics': metrics,
                     'episodes_processed': episode_count,
-                    'feedback_batch': batch.get('feedback_data', []),  # customer_message, ai_response, feedback_message, feedback_value
+                    'feedback_batch': batch.get('feedback_data', []),  
                 })
                 
               

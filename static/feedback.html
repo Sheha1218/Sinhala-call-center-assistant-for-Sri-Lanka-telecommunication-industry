@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ප්‍රතිපෝෂණ — Feedback</title>
+  <title>Feedback</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;700&display=swap" rel="stylesheet">
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
@@ -74,7 +74,7 @@
         e.preventDefault();
 
         if(rating === null){
-          setMessage({type:'error', text:'කරුණාකර ප්‍රතිපෝෂණ ශ්‍රේණිය තෝරා ගන්න'});
+          setMessage({type:'error', text:'කරුණාකර Feedback තෝරා ගන්න'});
           return;
         }
 
@@ -93,7 +93,7 @@
           const data = await res.json();
 
           if(res.ok){
-            setMessage({type:'success', text:`ස්තුතියි! ඔබේ ශ්‍රේණිය (${rating}/10) සංරක්ෂණය කරන ලදී — ID: ${data.feedback_id}`});
+            setMessage({type:'success', text:`ස්තුතියි! `});
             setRating(null);
           } else {
             setMessage({type:'error', text:`දෝෂය: ${data.detail}`});
@@ -109,7 +109,7 @@
       async function handleSubmitFull(e){
         e.preventDefault();
         if(rating === null){
-          setMessage({type:'error', text:'කරුණාකර ප්‍රතිපෝෂණ ශ්‍රේණිය තෝරා ගන්න'});
+          setMessage({type:'error', text:'කරුණාකර Feedback තෝරා ගන්න'});
           return;
         }
         setLoading(true);
@@ -126,7 +126,7 @@
           });
           const data = await res.json();
           if(res.ok){
-            setMessage({type:'success', text:`ස්තුතියි! ඔබේ ප්‍රතිපෝෂණ (${rating}/10) සහ ai_response සංරක්ෂණය කරන ලදී — ID: ${data.feedback_id}`});
+            setMessage({type:'success', text:`ස්තුතියි! (${rating}/10)`});
             setRating(null);
             setFeedbackMessage('');
           } else {
@@ -143,7 +143,7 @@
         e.preventDefault();
 
         if(!feedbackMessage.trim()){
-          setMessage({type:'error', text:'කරුණාකර ප්‍රතිපෝෂණ පණිවුඩ ඇතුළු කරන්න'});
+          setMessage({type:'error', text:'කරුණාකර Feedback පණිවුඩ ඇතුළු කරන්න'});
           return;
         }
 
@@ -162,7 +162,7 @@
           const data = await res.json();
 
           if(res.ok){
-            setMessage({type:'success', text:`ස්තුතියි! ඔබේ පණිවුඩ සංරක්ෂණය කරන ලදී — ID: ${data.feedback_id}`});
+            setMessage({type:'success', text:`ස්තුතියි!`});
             setFeedbackMessage('');
           } else {
             setMessage({type:'error', text:`දෝෂය: ${data.detail}`});
@@ -177,8 +177,8 @@
 
       return (
         <div className="container">
-          <h1>ප්‍රතිපෝෂණ</h1>
-          <p className="subtitle">ඔබේ අත්‍යවශ්‍ය ප්‍රකාශන අපට දැනුවන්න — Please share your feedback</p>
+          <h1>Feedback</h1>
+          <p className="subtitle">Please share your feedback</p>
           
           {/* No personal identifiers required for feedback */}
 
@@ -193,7 +193,7 @@
           <div className="section">
             <div className="section-title">⭐ ශ්‍රේණිය සහ පණිවුඩ (0-10)</div>
             <form onSubmit={handleSubmitFull}>
-              <label>ඔබේ ප්‍රතිපෝෂණ ශ්‍රේණිය තෝරා ගන්න</label>
+              <label>ඔබේ Feedback number තෝරා ගන්න</label>
               <div className="rating-container">
                 {Array.from({length:11}, (_,i)=>i).map(i=>(
                   <button
@@ -208,7 +208,7 @@
                 ))}
               </div>
               <div className="message-group">
-                <label htmlFor="msg">ඔබේ ප්‍රතිපෝෂණ පණිවුඩ (අමතර)</label>
+                <label htmlFor="msg">ඔබේ Feedback පණිවුඩ (අමතර)</label>
                 <textarea 
                   id="msg"
                   value={feedbackMessage}
@@ -218,7 +218,7 @@
               </div>
               <div className="button-group">
                 <button type="submit" className="btn-submit" disabled={loading}>
-                  {loading ? <span className="loading"><span className="spinner"></span>යවමින්...</span> : '✓ ප්‍රතිපෝෂණ යවන්න'}
+                  {loading ? <span className="loading"><span className="spinner"></span>යවමින්...</span> : 'Feedback යවන්න'}
                 </button>
               </div>
             </form>

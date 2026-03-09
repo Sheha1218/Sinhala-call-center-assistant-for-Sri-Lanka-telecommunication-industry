@@ -1,9 +1,8 @@
-"""
-Google Cloud Text-to-Speech using service account JSON.
-Uses sinhala-call-center-agent-8031ac1e97ce.json for Sinhala TTS.
-"""
 import os
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Set credentials before importing google client
 TTS_CREDENTIALS_PATH = os.getenv(
@@ -15,11 +14,7 @@ if os.path.exists(TTS_CREDENTIALS_PATH):
 
 
 def text_to_speech(text: str, language_code: str = "si-LK") -> bytes:
-    """
-    Convert Sinhala text to speech using Google Cloud TTS.
-    Returns MP3 audio bytes.
-    Uses sinhala-call-center-agent-8031ac1e97ce.json for auth.
-    """
+ 
     try:
         from google.cloud import texttospeech
     except ImportError:
@@ -39,4 +34,5 @@ def text_to_speech(text: str, language_code: str = "si-LK") -> bytes:
         voice=voice,
         audio_config=audio_config,
     )
+    logger.info(f"AI message generation successful (TTS) - Language: {language_code}, Text length: {len(text)} chars, Audio size: {len(response.audio_content)} bytes")
     return response.audio_content

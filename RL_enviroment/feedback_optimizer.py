@@ -56,7 +56,6 @@ class FeedbackOptimizer:
                 json.dump(config, f, indent=4)
     
     def fetch_feedback_data(self):
-        """Fetch feedback_value, feedback_message, ai_response, customer_message for PPO training."""
         query = f"""
             SELECT feedback_id, customer_nic, connection_number, 
                    feedback_value, feedback_message, ai_response, customer_message, created_at 
